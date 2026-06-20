@@ -1,0 +1,10 @@
+{
+  "id": "custom-webhook-email",
+  "channel": "email",
+  "version": "1.0.0",
+  "permissions": ["network:https://hooks.example.com"],
+  "configSchema": {
+    "url": "string",
+    "secret": "secret"
+  }
+}

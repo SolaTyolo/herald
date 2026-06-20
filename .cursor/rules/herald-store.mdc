@@ -1,0 +1,17 @@
+---
+description: Repository and GORM store implementation
+globs: "internal/repository/**"
+alwaysApply: false
+---
+
+# Store Layer
+
+- Port: `repository.Store` in `repository.go` — add methods here first.
+- Implementations: `filestore` (JSON files), `gormstore` (GORM/SQL when `STORE_TYPE=db`).
+- Factory: `repository.Open(ctx, cfg)` — do not wire stores directly in bootstrap.
+- Migrations: GORM `AutoMigrate` in `gormstore.RunMigrations`; API role only.
+- Models: `gormstore/models.go`; keep domain mapping in `toDomain()` helpers.
+- Use transactions for multi-table writes (workflows, notifications+jobs).
+- Return `gorm.ErrRecordNotFound` for missing rows; callers use `repository.IsNotFound`.
+
+Do not use raw SQL in business layers unless explicitly requested.

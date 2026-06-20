@@ -1,0 +1,17 @@
+---
+description: Herald core architecture constraints for all agent sessions
+alwaysApply: true
+---
+
+# Herald Core
+
+- Module: `github.com/SolaTyolo/herald`. Project name: **Herald**.
+- **WASM-only**: channel providers in `plugins/wasm/` only.
+- `cmd/api` and `cmd/worker` must NOT import provider implementations.
+- Delivery: `wasm.Runtime` for channel send; `in_app` is core-built-in (bridge → subscriber webhook).
+- Persistence: `repository.Store` via `repository.Open()` — business layers use the Store port only.
+- Missing records: use `repository.IsNotFound(err)`.
+- Bootstrap roles: `RoleAPI` (migrations, bridge subscriber) vs `RoleWorker` (Asynq); same `WASM_PLUGIN_DIR` and `REDIS_ADDR` on both.
+- Minimize diff scope; match existing patterns.
+
+See `AGENTS.md` and `docs/ARCHITECTURE.md`.

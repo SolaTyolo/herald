@@ -1,0 +1,14 @@
+---
+description: Go conventions for Herald
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Go Conventions
+
+- Import path prefix: `github.com/SolaTyolo/herald/...`
+- New providers: WASM under `plugins/wasm/<name>/` — see `docs/WASM_PROVIDERS.md`.
+- Errors: wrap with context; return domain errors from services, not HTTP details.
+- Tests: table-driven where sensible; use `t.Parallel()` when safe.
+- After edits: run `go test ./...` for affected packages at minimum.
+- Do not add comments that restate obvious code.

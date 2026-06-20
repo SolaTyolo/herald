@@ -1,0 +1,16 @@
+---
+description: WASM provider plugin development (standard path)
+globs: "plugins/wasm/**"
+alwaysApply: false
+---
+
+# WASM Providers (Standard)
+
+- One directory per provider under `plugins/wasm/<name>/`
+- Required files: `provider.json` + `provider.wasm`
+- Exports: `malloc`, `Send` (see `pkg/plugin/wasm/abi.go`)
+- Host imports: `herald.log`, `herald.get_context`, `herald.http_fetch` (SDK: `plugins/sdk/herald/`)
+- `permissions` in provider.json required for outbound HTTP (`network:https://...`)
+- Restart **both** API and Worker after adding/changing plugins
+
+Full guide: `docs/WASM_PROVIDERS.md`
