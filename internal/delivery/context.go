@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 )
 
-// SendContext carries workflow/notification metadata into WASM host functions and Send JSON.
+// SendContext carries workflow/notification metadata into delivery calls.
 type SendContext struct {
 	TransactionID  string
 	WorkflowID     string

@@ -33,6 +33,29 @@ func (s *Store) CreateMessage(ctx context.Context, msg *domain.Message) error {
 	return writeJSON(s.messagePath(msg.EnvID, msg.ID), msg)
 }
 
+func (s *Store) GetMessageByJobID(ctx context.Context, envID, jobID string) (*domain.Message, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if jobID == "" {
+		return nil, ErrNotFound
+	}
+	files, err := listJSONFiles(s.messagesDir(envID))
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range files {
+		var msg domain.Message
+		if err := readJSON(path, &msg); err != nil {
+			return nil, err
+		}
+		if msg.JobID != nil && *msg.JobID == jobID {
+			return &msg, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
 func (s *Store) ListMessages(ctx context.Context, subscriberPK string, unreadOnly bool, limit, offset int) ([]domain.Message, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

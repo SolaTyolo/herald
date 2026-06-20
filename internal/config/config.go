@@ -31,8 +31,10 @@ type Config struct {
 	DatabaseURL   string
 	StoreFilePath string
 	RedisAddr     string
-	EncryptionKey string
-	WASMPluginDir string
+	EncryptionKey   string
+	ProvidersConfig string
+	// DeliveryResultMode: sync (HTTP body) or async (Redis result queue).
+	DeliveryResultMode string
 	// Worker ↔ API event bus (in_app message fan-out to API for webhook delivery)
 	WorkerAPIPubSub             string
 	WorkerAPIRabbitMQHTTPURL    string
@@ -84,8 +86,9 @@ func Load() (*Config, error) {
 		DatabaseURL:       dbURL,
 		StoreFilePath:     getEnv("STORE_FILE_PATH", "./data"),
 		RedisAddr:         getEnv("REDIS_ADDR", "localhost:6379"),
-		EncryptionKey:     getEnv("ENCRYPTION_KEY", defaultEncryptionKey),
-		WASMPluginDir:     getEnv("WASM_PLUGIN_DIR", "./plugins/wasm"),
+		EncryptionKey:               getEnv("ENCRYPTION_KEY", defaultEncryptionKey),
+		ProvidersConfig:             getEnv("PROVIDERS_CONFIG", "./config/providers.yaml"),
+		DeliveryResultMode:          strings.ToLower(getEnv("DELIVERY_RESULT_MODE", "async")),
 		WorkerAPIPubSub:             envFallback("WORKER_API_PUBSUB", "INAPP_PUBSUB", "redis"),
 		WorkerAPIRabbitMQHTTPURL:    envFallback("WORKER_API_RABBITMQ_HTTP_URL", "INAPP_RABBITMQ_HTTP_URL", ""),
 		WorkerAPIRabbitMQUser:       envFallback("WORKER_API_RABBITMQ_USER", "INAPP_RABBITMQ_USER", "guest"),
@@ -111,6 +114,11 @@ func Load() (*Config, error) {
 	}
 	if !cfg.DevMode && cfg.EncryptionKey == defaultEncryptionKey {
 		return nil, fmt.Errorf("refusing default ENCRYPTION_KEY outside DEV_MODE; set ENCRYPTION_KEY or DEV_MODE=true")
+	}
+	switch cfg.DeliveryResultMode {
+	case "sync", "async":
+	default:
+		return nil, fmt.Errorf("DELIVERY_RESULT_MODE must be sync or async")
 	}
 	switch strings.ToLower(cfg.WorkerAPIPubSub) {
 	case "redis", "local", "rabbitmq-http", "kafka-http":

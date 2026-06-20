@@ -103,7 +103,7 @@ func (s *Store) ValidateAPIKey(ctx context.Context, key string) (*domain.Environ
 	if err != nil {
 		return nil, fmt.Errorf("invalid api key")
 	}
-	key = strings.TrimPrefix(strings.TrimPrefix(key, "ApiKey "), "Bearer ")
+	key = strings.TrimPrefix(key, "Bearer ")
 	prefix := key
 	if len(prefix) > 10 {
 		prefix = prefix[:10]

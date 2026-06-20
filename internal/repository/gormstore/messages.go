@@ -21,6 +21,18 @@ func (s *Store) CreateMessage(ctx context.Context, msg *domain.Message) error {
 	return s.db.WithContext(ctx).Create(messageModelFromDomain(msg)).Error
 }
 
+func (s *Store) GetMessageByJobID(ctx context.Context, envID, jobID string) (*domain.Message, error) {
+	if jobID == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var m messageModel
+	err := s.db.WithContext(ctx).Where("env_id = ? AND job_id = ?", envID, jobID).First(&m).Error
+	if err != nil {
+		return nil, err
+	}
+	return m.toDomain()
+}
+
 func (s *Store) ListMessages(ctx context.Context, subscriberPK string, unreadOnly bool, limit, offset int) ([]domain.Message, error) {
 	q := s.db.WithContext(ctx).Where("subscriber_pk = ?", subscriberPK)
 	if unreadOnly {

@@ -1,0 +1,18 @@
+---
+description: YAML provider routing and Worker SDK
+globs: "config/providers.yaml,internal/routing/**,sdk/worker/**,pkg/contract/**,internal/delivery/**"
+alwaysApply: false
+---
+
+# Providers (YAML + Worker SDK)
+
+- Config: Traefik v3 FileProvider style — `services` + `providers` in `PROVIDERS_CONFIG`
+- Builtin names only: `smtp_email`, `inapp` (`type: builtin`, no `service`)
+- Remote: `type: remote` + `service` referencing a defined service endpoint
+- Hot reload via fsnotify; reject invalid YAML and keep previous table
+- Health: service-level `healthCheck` polling; unhealthy → retryable remote failure
+- Results: default `DELIVERY_RESULT_MODE=async` — Worker publishes `DeliveryResultEvent` to Redis; Herald waits by `taskId`
+- User workers: `sdk/worker.RegisterProvider` + `Run`; expose `POST /delivery` and `GET /health`
+- Contract: `pkg/contract`
+
+Full guide: `docs/PROVIDERS.md`

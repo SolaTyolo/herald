@@ -103,6 +103,9 @@ type TriggerRequest struct {
 }
 
 type TriggerResponse struct {
-	TransactionID string   `json:"transactionId"`
+	TransactionID   string   `json:"transactionId"`
 	NotificationIDs []string `json:"notificationIds,omitempty"`
+	// Async is true when topic fan-out was queued; notificationIds will be empty
+	// until the worker creates per-subscriber notifications.
+	Async bool `json:"async,omitempty"`
 }

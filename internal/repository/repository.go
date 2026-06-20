@@ -60,6 +60,7 @@ type Store interface {
 	DeleteDigestBucket(ctx context.Context, id string) error
 
 	CreateMessage(ctx context.Context, msg *domain.Message) error
+	GetMessageByJobID(ctx context.Context, envID, jobID string) (*domain.Message, error)
 	ListMessages(ctx context.Context, subscriberPK string, unreadOnly bool, limit, offset int) ([]domain.Message, error)
 	UpdateMessageForSubscriber(ctx context.Context, envID, subscriberPK, messageID string, read, archived *bool) (*domain.Message, error)
 

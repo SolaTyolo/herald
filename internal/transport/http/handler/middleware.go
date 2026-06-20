@@ -25,8 +25,11 @@ func AuthMiddleware(store repository.Store) func(http.Handler) http.Handler {
 				writeError(w, http.StatusUnauthorized, "missing authorization")
 				return
 			}
+			if !strings.HasPrefix(auth, "Bearer ") {
+				writeError(w, http.StatusUnauthorized, "authorization must use Bearer scheme")
+				return
+			}
 			key := strings.TrimPrefix(auth, "Bearer ")
-			key = strings.TrimPrefix(key, "ApiKey ")
 			env, err := store.ValidateAPIKey(r.Context(), key)
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, "invalid api key")

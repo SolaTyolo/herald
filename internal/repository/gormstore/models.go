@@ -300,8 +300,8 @@ func (m jobModel) toDomain() (*domain.Job, error) {
 
 type messageModel struct {
 	ID           string    `gorm:"primaryKey;size:36"`
-	EnvID        string    `gorm:"size:36;not null;index"`
-	JobID        *string   `gorm:"size:36"`
+	EnvID        string    `gorm:"size:36;not null;index;index:idx_messages_env_job,priority:1"`
+	JobID        *string   `gorm:"size:36;index:idx_messages_env_job,priority:2"`
 	SubscriberPK string    `gorm:"size:36;not null;index"`
 	Channel      string    `gorm:"not null"`
 	Subject      string

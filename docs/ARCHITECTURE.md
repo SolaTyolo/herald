@@ -1,181 +1,127 @@
-# Herald 架构分析与优化指南
+# Herald 架构
 
-> 文档版本：**3.2**  
-> 最后更新：2026-06-20  
 > Module：`github.com/SolaTyolo/herald`
 
-## 1. 项目概述
+## 1. 概述
 
-**Herald** 是受 [Novu](https://github.com/novuhq/novu) 启发的通知基础设施，采用 [Paca](https://github.com/Paca-AI/paca) 风格的 **WASM 插件架构**：所有 channel provider（email / sms / push / chat）以 WASM 扩展交付；**核心不含任何 channel provider 实现**。`in_app` 由核心内置（写库 + subscriber `webhookUrl` 投递）。
+**Herald** 是受 [Novu](https://github.com/novuhq/novu) 启发的通知基础设施。渠道投递采用 **Traefik v3 风格 YAML 声明式路由**：
+
+- **builtin**：`smtp_email`、`inapp` — 在 Asynq Worker 进程内本地执行
+- **remote**：用户自建 Delivery Worker（`POST /delivery`），由 YAML `services` + `providers` 映射
 
 | 组件 | 技术 |
 |------|------|
-| API | Chi、REST、OTEL |
-| Worker | Asynq + Redis |
-| 持久化 | file：JSON 文件；db：GORM（PostgreSQL · MySQL · SQLite） |
-| **Channel 插件** | wazero WASM + `plugins/wasm/*/provider.wasm` |
-| In-app | 核心内置（`delivery` 写库 + Worker↔API `bridge` + subscriber webhook） |
-| 可观测性 | slog + OpenTelemetry（traces / metrics） |
+| API | Chi、REST、OpenTelemetry |
+| Worker | Asynq + Redis（工作流任务、Topic fan-out） |
+| 持久化 | `file`（JSON）或 `db`（GORM：PostgreSQL / MySQL / SQLite） |
+| 渠道路由 | `PROVIDERS_CONFIG` YAML + fsnotify 热加载 |
+| 结果回传 | Redis 结果队列（默认）或 HTTP 同步体 |
+| 用户扩展 | `sdk/worker` + `pkg/contract` |
 
 ## 2. 目录与分层
 
 ```
-cmd/api                    HTTP（bootstrap.RoleAPI）
-cmd/worker                 异步任务（bootstrap.RoleWorker）
+cmd/api                 HTTP（bootstrap.RoleAPI）
+cmd/worker              异步任务（bootstrap.RoleWorker）
+config/providers.yaml   Traefik 风格 services + providers
 internal/
-  domain/                  纯实体
-  repository/              Store 端口 + Open 工厂
-    filestore/             JSON 文档文件（STORE_TYPE=file）
-    gormstore/             GORM/SQL（STORE_TYPE=db）
-  service/                 用例层（Trigger、CRUD、Provider 安装）
-  workflow/                步骤编排引擎（核心）
-  delivery/                渠道投递 + WASM 调度 + in_app webhook
-  queue/asynq/             任务入队（Asynq + Redis）
-  realtime/
-    bridge/                Worker ↔ API 事件总线（redis / kafka-http / rabbitmq-http）
-  platform/plugin/wasm/    WASM 运行时
-  telemetry/               slog + OTEL
-  transport/http/          Handler + Auth + Metrics
-  bootstrap/               组合根（按 Role 拆分）
-pkg/plugin/                Provider WASM JSON 契约类型
-plugins/wasm/              WASM 插件（每 provider 一目录）
-.github/workflows/         CI
+  domain/               纯实体
+  repository/           Store 端口 + Open 工厂
+  service/              用例层
+  workflow/             步骤编排引擎
+  delivery/             smtp / in_app / remote + resultqueue
+  routing/              YAML 路由表 + 热加载 + 健康探测
+  queue/asynq/          任务入队
+  realtime/bridge/      Worker ↔ API（in_app webhook）
+  telemetry/
+  transport/http/
+  bootstrap/
+pkg/contract/           DeliveryRequest / DeliveryError / DeliveryResultEvent
+sdk/worker/             用户 Delivery Worker SDK
 ```
-
-### 2.1 依赖方向
 
 ```mermaid
 flowchart TB
   subgraph transport [Transport]
     H[handler.API]
-    MW[AuthMiddleware + MetricsMiddleware]
   end
   subgraph app [Application]
-    SVC[service.*]
+    SVC[service]
     ENG[workflow.Engine]
     DEL[delivery.Service]
   end
   subgraph infra [Infrastructure]
     ST[(repository.Store)]
     Q[asynq]
-    R[redis]
+    RT[routing.Table]
+    RQ[resultqueue]
+    SMTP[builtin SMTP]
     BR[bridge]
-    WH[in_app webhook]
-    WASM[wasm.Runtime]
-    OTEL[telemetry]
   end
-  subgraph ext [WASM Extensions]
-    WASMEXT["plugins/wasm/*/provider.wasm"]
+  subgraph ext [User Workers]
+    UDW["POST /delivery"]
   end
   H --> SVC
-  MW --> ST
   SVC --> ST
   ENG --> ST
   ENG --> Q
   ENG --> DEL
-  ENG --> R
   DEL --> ST
-  DEL --> WASM
+  DEL --> RT
+  DEL --> SMTP
   DEL --> BR
-  BR --> WH
-  WASMEXT --> WASM
-  OTEL -.-> H
+  DEL --> RQ
+  RT -->|remote| UDW
+  UDW -->|DeliveryResultEvent| RQ
 ```
 
-**核心设计原则：**
+**设计原则：**
 
-- **端口与适配器**：业务层依赖 `repository.Store`；投递依赖 `wasm.Runtime`，不感知 GORM / 具体 WASM 实现语言
-- **扩展与核心分离**：`cmd/*` 不 import 任何 provider 实现；新增 provider 仅增 WASM 目录 + Integration
-- **双进程协作**：API 负责 HTTP/Migration；Worker 负责 job 执行；**两者须挂载同一 `WASM_PLUGIN_DIR`**
-- **Worker ↔ API 事件总线**：`realtime/bridge`（redis / kafka-http / rabbitmq-http），与 Asynq 队列分离
-- **In-app 客户端投递**：subscriber `webhookUrl`，不由 Herald 维护长连接
+- 业务层只依赖 `repository.Store` 与 `routing.Table` / delivery，不感知 GORM
+- builtin 本地执行；remote 转发用户 Worker
+- API 与 Worker 共用 `PROVIDERS_CONFIG`、`REDIS_ADDR`
+- `Integration.providerId` 必须等于 YAML `providerName`
 
 ## 3. 持久化
 
-### 3.1 两种 Store 模式
+| `STORE_TYPE` | 行为 |
+|--------------|------|
+| `file` | `{STORE_FILE_PATH}/` 下 JSON |
+| `db` | GORM + `DB_DRIVER`（postgres / mysql / sqlite） |
 
-| `STORE_TYPE` | 行为 | 典型场景 |
-|--------------|------|----------|
-| `file` | `{STORE_FILE_PATH}/` 下 JSON（`bootstrap.json`、`envs/{envId}/…`） | 本地开发、无数据库 |
-| `db` | GORM + `DB_DRIVER` | 生产 |
+- 端口：`repository.Store`；缺失记录用 `repository.IsNotFound(err)`
+- Migration：仅 **API** 启动时 AutoMigrate
 
-### 3.2 DB 驱动（`STORE_TYPE=db`）
+## 4. Provider 与投递
 
-| `DB_DRIVER` | 默认 `DATABASE_URL` |
-|-------------|---------------------|
-| `postgres` | `postgres://herald:herald@localhost:5432/herald?sslmode=disable` |
-| `mysql` | `herald:herald@tcp(localhost:3306)/herald?charset=utf8mb4&parseTime=True&Loc=Local` |
-| `sqlite` | `./data/herald.db` |
-
-Migration：GORM `AutoMigrate`，**仅 API 启动时**执行。
-
-### 3.3 Store 端口
-
-`repository.Store` 定义全部持久化操作；`repository.IsNotFound(err)` 统一判断记录不存在。
-
-## 4. 插件架构
-
-### 4.1 WASM 扩展（唯一路径）
-
-新增 email/sms/push/chat provider **无需修改核心代码**。详见 **[WASM_PROVIDERS.md](WASM_PROVIDERS.md)**。
-
-| 步骤 | 操作 |
-|------|------|
-| 1 | 在 `WASM_PLUGIN_DIR/<name>/` 放置 `provider.json` + `provider.wasm` |
-| 2 | 重启 **API 与 Worker**（`LoadFromDir`） |
-| 3 | `POST /v1/integrations`，`providerId` = manifest `id` |
-
-运行时：`delivery` 要求 `wasm.HasProvider(id)` → `wasm.Send`；Send JSON 含 `context`；插件可 import `herald.*` host 函数。
-
-沙箱：16MB 内存、10s 调用超时；`manifest.permissions` 在加载时校验，`http_fetch` 按白名单放行。
-
-#### Host imports（Paca 式扩展点）
-
-| Import | 说明 | 权限 |
-|--------|------|------|
-| `herald.log` | 写 slog | 默认 |
-| `herald.get_context` | 读 CallContext JSON | 默认 |
-| `herald.http_fetch` | 出站 HTTP | `network:https://host` |
-
-SDK：`plugins/sdk/herald/`（TinyGo `//go:wasmimport`）
-
-#### WASM 运行时现状
-
-| 能力 | 状态 |
-|------|------|
-| `malloc` + `Send` 导出 | 已实现 |
-| Send JSON `context` 字段 | **已实现** |
-| `ValidateConfig` 导出 | 已接入 Integration 创建 |
-| Host `log` / `get_context` / `http_fetch` | **已实现** |
-| manifest `permissions` | **加载时校验 + http_fetch 强制** |
-| 每次 Send 实例化 module | 有性能开销（待实例池） |
-| 热更新 | 需重启 |
-
-### 4.2 In-app（核心内置）
-
-```
-in_app 步骤 → Worker 写 messages 表 → bridge.Publisher
-         → (redis | kafka-http | rabbitmq-http)
-         → API bridge.Subscriber → POST subscriber.webhookUrl
-```
-
-- **Worker ↔ API**：`realtime/bridge`，与 Asynq 队列无关；环境变量 `WORKER_API_PUBSUB`
-- **客户端投递**：subscriber 上的 `webhookUrl`，下游自行接入；可选 `GET /messages` 轮询
-- **redis**（默认）、**kafka-http**、**rabbitmq-http**（Rabbit 订阅经 `cmd/rabbit-inapp-bridge` sidecar）
-
-创建 subscriber 示例：
-
-```json
-{ "subscriberId": "user-1", "webhookUrl": "https://your-app.example/hooks/in-app" }
-```
-
-### 4.3 投递路径
+详见 [PROVIDERS.md](PROVIDERS.md)。
 
 ```
 delivery.SendChannel
-  ├─ in_app  → CreateMessage + bridge.Publisher（API 侧 webhook 投递）
-  └─ channel → wasm.HasProvider(id) → wasm.Send（未加载则报错）
+  ├─ in_app  → CreateMessage + bridge.Publisher
+  └─ 其他 channel → ListActiveIntegrations → routing.Lookup(providerId)
+       ├─ builtin smtp_email → 本地 SMTP
+       └─ remote → POST service.endpoint
+            └─ async：Worker 202 + Redis 结果队列；sync：HTTP 响应体
 ```
+
+### In-app
+
+```
+in_app 步骤 → Worker 写 messages → bridge.Publisher
+         → API bridge.Subscriber →（可选）POST subscriber.webhookUrl
+客户端：GET /v1/subscribers/{id}/messages
+```
+
+### 投递保障
+
+| 能力 | 行为 |
+|------|------|
+| 重试 | 仅 `DeliveryError.retryable=true` 触发 Asynq 重试；否则 `SkipRetry` |
+| 幂等 | 发前 `GetMessageByJobID`；已有 message 则跳过 |
+| Failover | `Retryable` 不上探其他 Integration |
+| 健康探测 | YAML `healthCheck` 周期探测；不健康则 remote 可重试失败 |
+| Topic | 触发入队 `workflow:topic_fanout`，响应 `async: true` |
 
 ## 5. 核心数据流
 
@@ -186,17 +132,29 @@ sequenceDiagram
   participant Store
   participant Redis
   participant Worker
-  participant WASM as WASM Provider
+  participant UDW as UserDeliveryWorker
 
   Client->>API: POST /v1/events/trigger
-  API->>Store: Notification + Jobs
-  API->>Redis: enqueue job[0]
+  alt Topic
+    API->>Redis: enqueue topic_fanout
+    API-->>Client: transactionId async true
+    Redis->>Worker: ProcessTopicFanout
+    Worker->>Store: Notification plus Jobs
+    Worker->>Redis: enqueue process_job
+  else Subscriber
+    API->>Store: Notification plus Jobs
+    API->>Redis: enqueue process_job
+  end
   Redis->>Worker: ProcessJob
-  Worker->>Store: GetNotification + payload
-  Worker->>WASM: Send（wazero 沙箱）
-  Worker->>Store: Message + execution_logs
-  Note over Worker,Redis: in_app 时 Worker publish → API subscribe → SSE
-  Worker->>Redis: enqueue job[n+1]
+  alt builtin
+    Worker->>Store: Message
+  else remote async
+    Worker->>UDW: POST /delivery async
+    UDW-->>Worker: 202
+    UDW->>Redis: DeliveryResultEvent
+    Worker->>Redis: BRPOP result
+    Worker->>Store: Message
+  end
 ```
 
 ## 6. 可观测性
@@ -205,93 +163,35 @@ sequenceDiagram
 |------|------|------|
 | `LOG_LEVEL` | debug / info / warn / error | `info` |
 | `LOG_FORMAT` | text / json | `text` |
-| `OTEL_ENABLED` | 启用 OTLP 导出 | `false` |
+| `OTEL_ENABLED` | OTLP 导出 | `false` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP HTTP 端点 | `http://localhost:4318` |
-| `OTEL_SERVICE_NAME` | bootstrap 按 Role 设为 `herald-api` / `herald-worker` | `herald` |
 
-## 7. 架构评审
+Worker 对 `process_job` / `digest_flush` / `topic_fanout` 与 remote HTTP 打 span。
 
-### 7.1 优势
-
-- **域模型清晰**：Workflow / Subscriber / Topic / Integration 与 Novu 对齐
-- **WASM 扩展零核心改动**：provider 独立编译、独立发布
-- **存储可替换**：file / postgres / mysql / sqlite
-- **In-app 跨进程 SSE**：Redis Pub/Sub 桥接 Worker 与 API
-
-### 7.2 已完成优化
-
-| 版本 | 内容 |
-|------|------|
-| 2.0 | P0/P1（payload、delay、bcrypt、WASM 沙箱、Role 拆分等） |
-| 3.0 | GORM 多存储、OTEL |
-| 3.1 | WASM-first 文档对齐；`HasProvider` 路由修复 |
-| **3.4** | Host imports（log / get_context / http_fetch）+ Send context + permissions |
-
-### 7.3 已知限制与待办
-
-#### P1 — 扩展性 / 性能 / 运维
-
-| ID | 问题 | 建议 |
-|----|------|------|
-| P1-2 | Digest 高并发竞态 | 事务 + `SELECT FOR UPDATE` |
-| P1-3 | Topic fan-out 同步阻塞 trigger HTTP | Asynq fan-out 任务 |
-| P1-5 | WASM manifest `permissions` 未强制 | ~~安装/加载时校验~~ **已完成**；后续可加更细粒度 |
-| P1-6 | WASM 每次 Send 实例化 module | 实例池或长驻 instance |
-| P1-8 | Worker 无 OTEL 埋点 | 包装 Asynq handler |
-
-#### P2 — 代码卫生 / DX
-
-| ID | 问题 | 建议 |
-|----|------|------|
-| P2-1 | `gormstore` 按域拆分 | 已完成（`workflows.go` 等） |
-| P2-4 | Asynq 重试可能重复发送 | 任务幂等键 / provider 侧 dedup |
-| P2-5 | WASM 热更新需重启 | reload API 或 SIGHUP |
-| P2-6 | 测试覆盖薄 | 补 `delivery`、`gormstore`、`wasm/runtime`、E2E |
-| P2-7 | API Key prefix 桶内 O(n) bcrypt | 增加 key id 直查 |
-| P2-8 | 云 WASM provider 缺真实签名示例 | 文档 + 参考插件 |
-
-### 7.4 建议实施顺序
-
-1. **P1-5** WASM permissions 强制  
-2. **P1-3** Topic 异步 fan-out  
-3. **P1-6** WASM 实例池  
-4. **P2-6** 测试覆盖
-
-## 8. 安全模型
+## 7. 安全
 
 | 资产 | 机制 |
 |------|------|
-| API Key | bcrypt + `key_prefix` 索引 |
+| API Key | bcrypt + `key_prefix` |
 | Integration 凭据 | AES-GCM；`ENCRYPTION_KEY` 32 字节 |
-| WASM | 16MB 内存、10s 超时、路径校验 |
 | Message API | 更新绑定 `(env_id, subscriber_pk)` |
 
-## 9. 部署约束
+## 8. 部署
 
-1. **Migration**：仅 API 执行（GORM AutoMigrate）
-2. **WASM 插件**：API **与 Worker** 必须访问**相同** `WASM_PLUGIN_DIR`
-3. **Redis**：API 与 Worker 共用（Asynq + in-app SSE + throttle）
-4. **DEV_MODE**：本地可 `DEV_MODE=true`；生产必须显式 `ENCRYPTION_KEY`
-5. **Worker + API**：必须同时运行
-
-## 10. 启动命令
+1. Migration 仅 API 执行
+2. API 与 Worker 挂载同一 `PROVIDERS_CONFIG`
+3. 共用 Redis（Asynq、bridge、结果队列、throttle）
+4. 生产禁止默认 `ENCRYPTION_KEY`（除非 `DEV_MODE`）
+5. 用户 Delivery Worker 独立部署，YAML 配置 endpoint；async 模式需能写同一 Redis
 
 ```bash
 make docker-up
-# 放置 WASM 插件到 plugins/wasm/<name>/
 DEV_MODE=true make build
 DEV_MODE=true make run-api    # terminal 1
 make run-worker               # terminal 2
 ```
 
-## 11. Provider 来源
-
-| 类型 | 来源 | 新增方式 |
-|------|------|----------|
-| email / sms / push / chat | `plugins/wasm/*/provider.wasm` | 新增 WASM 目录，不改核心 |
-| in_app | 核心内置 | 无需 provider 插件 |
-
-## 12. 环境变量速查
+## 9. 环境变量
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
@@ -299,29 +199,19 @@ make run-worker               # terminal 2
 | `DB_DRIVER` | `postgres` | `postgres` / `mysql` / `sqlite` |
 | `DATABASE_URL` | 按 driver | 数据库 DSN |
 | `STORE_FILE_PATH` | `./data` | file 模式目录 |
-| `REDIS_ADDR` | `localhost:6379` | Asynq + in-app SSE + throttle |
+| `REDIS_ADDR` | `localhost:6379` | Asynq + bridge + 结果队列 |
 | `ENCRYPTION_KEY` | — | 32 字节 |
 | `DEV_MODE` | `false` | 本地开发 |
-| **`WASM_PLUGIN_DIR`** | `./plugins/wasm` | **WASM 插件根目录（必配）** |
+| `PROVIDERS_CONFIG` | `./config/providers.yaml` | YAML 路由 |
+| `DELIVERY_RESULT_MODE` | `async` | `async` / `sync` |
 | `HTTP_ADDR` | `:8080` | API 监听 |
+| `MAX_RECIPIENTS` | `100` | Topic 单次上限 |
+| `WORKER_API_PUBSUB` | `redis` | bridge：`redis` / `local` / `rabbitmq-http` / `kafka-http` |
 
-## 13. 测试与 CI
+完整注释见 [`.env.example`](../.env.example)。
 
-```bash
-make test
-```
+## 10. 参考
 
-## 14. 变更日志
-
-| 版本 | 日期 | 说明 |
-|------|------|------|
-| 3.3 | 2026-06-20 | 代码清理：dead code、installed_providers、精简 pkg/plugin |
-| 3.2 | 2026-06-20 | WASM-only；Redis in-app SSE；ValidateConfig；health 探测 |
-| 3.1 | 2026-06-20 | WASM-first 文档对齐 |
-| 3.0 | 2026-06-20 | Herald 更名、GORM、OTEL |
-
-## 15. 参考
-
-- [WASM_PROVIDERS.md](WASM_PROVIDERS.md) — WASM 扩展开发
+- [PROVIDERS.md](PROVIDERS.md) — YAML 路由与 Worker SDK
 - [AGENTS.md](../AGENTS.md) — Cursor Agent 约束
 - [CURSOR.md](CURSOR.md) — Cursor 工作流

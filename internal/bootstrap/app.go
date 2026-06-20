@@ -7,10 +7,11 @@ import (
 	"github.com/SolaTyolo/herald/internal/config"
 	"github.com/SolaTyolo/herald/internal/crypto"
 	"github.com/SolaTyolo/herald/internal/delivery"
-	wasmruntime "github.com/SolaTyolo/herald/internal/platform/plugin/wasm"
+	"github.com/SolaTyolo/herald/internal/delivery/resultqueue"
 	asynqqueue "github.com/SolaTyolo/herald/internal/queue/asynq"
 	"github.com/SolaTyolo/herald/internal/realtime/bridge"
 	"github.com/SolaTyolo/herald/internal/repository"
+	"github.com/SolaTyolo/herald/internal/routing"
 	"github.com/SolaTyolo/herald/internal/service"
 	"github.com/SolaTyolo/herald/internal/telemetry"
 	"github.com/SolaTyolo/herald/internal/transport/http/handler"
@@ -28,16 +29,18 @@ const (
 )
 
 type App struct {
-	Config      *config.Config
-	Store       repository.Store
-	Redis       *redis.Client
-	Queue       *asynqqueue.Client
-	BridgeSub   bridge.Subscriber
-	WASM        *wasmruntime.Runtime
-	Engine      *workflow.Engine
-	Handler     *handler.API
-	Encryptor   *crypto.Encryptor
-	Shutdown    func(context.Context) error
+	Config    *config.Config
+	Store     repository.Store
+	Redis     *redis.Client
+	Queue     *asynqqueue.Client
+	BridgeSub bridge.Subscriber
+	Routes    *routing.Table
+	Engine    *workflow.Engine
+	Trigger   *service.TriggerService
+	Handler   *handler.API
+	Encryptor *crypto.Encryptor
+	Shutdown  func(context.Context) error
+	stopWatch func()
 }
 
 func New(ctx context.Context, role Role) (*App, error) {
@@ -105,30 +108,42 @@ func New(ctx context.Context, role Role) (*App, error) {
 		bridgeSub.Run(ctx, webhookDeliverer.Handle)
 	}
 
-	wasmRT := wasmruntime.NewRuntime(cfg.WASMPluginDir)
-	if err := wasmRT.LoadFromDir(); err != nil {
+	routes, err := routing.Open(cfg.ProvidersConfig)
+	if err != nil {
 		store.Close()
 		return nil, err
 	}
-	if len(wasmRT.ListManifests()) == 0 {
-		slog.Warn("no wasm providers loaded", "dir", cfg.WASMPluginDir,
-			"hint", "place provider.json + provider.wasm under WASM_PLUGIN_DIR")
+	stopWatch, err := routing.Watch(ctx, routes)
+	if err != nil {
+		slog.Warn("providers config watch disabled", "path", cfg.ProvidersConfig, "err", err)
+		stopWatch = func() {}
 	}
+	routes.StartHealthChecks(ctx)
+	slog.Info("providers routing loaded", "path", cfg.ProvidersConfig, "providers", len(routes.ListProviders()))
 
-	deliverySvc := delivery.New(store, enc, wasmRT, eventPub)
+	var results *resultqueue.Queue
+	asyncResults := cfg.DeliveryResultMode == "async"
+	if asyncResults {
+		results = resultqueue.New(redisClient)
+	}
+	deliverySvc := delivery.New(store, enc, routes, eventPub, delivery.Options{
+		AsyncResults: asyncResults,
+		Results:      results,
+	})
 	engine := workflow.NewEngine(store, queueClient, deliverySvc, redisClient)
+	triggerSvc := service.NewTriggerService(store, queueClient, cfg.MaxRecipients)
 
 	app := &App{
 		Config: cfg, Store: store, Redis: redisClient, Queue: queueClient,
-		BridgeSub: bridgeSub, WASM: wasmRT, Engine: engine, Encryptor: enc, Shutdown: shutdown,
+		BridgeSub: bridgeSub, Routes: routes, Engine: engine, Trigger: triggerSvc,
+		Encryptor: enc, Shutdown: shutdown, stopWatch: stopWatch,
 	}
 
 	if role == RoleAPI {
-		triggerSvc := service.NewTriggerService(store, queueClient, cfg.MaxRecipients)
 		subscriberSvc := service.NewSubscriberService(store)
 		workflowSvc := service.NewWorkflowService(store)
 		topicSvc := service.NewTopicService(store)
-		integrationSvc := service.NewIntegrationService(store, enc, wasmRT)
+		integrationSvc := service.NewIntegrationService(store, enc, routes)
 		notificationSvc := service.NewNotificationQueryService(store)
 		messageSvc := service.NewMessageService(store)
 
@@ -136,7 +151,7 @@ func New(ctx context.Context, role Role) (*App, error) {
 			cfg,
 			triggerSvc, subscriberSvc, workflowSvc, topicSvc,
 			integrationSvc, notificationSvc, messageSvc,
-			store, redisClient, wasmRT.ListManifests,
+			store, redisClient, routes,
 		)
 	}
 
@@ -144,15 +159,15 @@ func New(ctx context.Context, role Role) (*App, error) {
 }
 
 func (a *App) Close() {
+	if a.stopWatch != nil {
+		a.stopWatch()
+	}
 	if a.BridgeSub != nil {
 		a.BridgeSub.Close()
 	}
 	a.Queue.Close()
 	_ = a.Store.Close()
 	_ = a.Redis.Close()
-	if a.WASM != nil {
-		_ = a.WASM.Close(context.Background())
-	}
 	if a.Shutdown != nil {
 		_ = a.Shutdown(context.Background())
 	}

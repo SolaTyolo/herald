@@ -10,9 +10,9 @@ import (
 
 	"github.com/SolaTyolo/herald/internal/config"
 	"github.com/SolaTyolo/herald/internal/domain"
-	"github.com/SolaTyolo/herald/internal/platform/plugin/wasm"
 	"github.com/SolaTyolo/herald/internal/realtime/bridge"
 	"github.com/SolaTyolo/herald/internal/repository"
+	"github.com/SolaTyolo/herald/internal/routing"
 	"github.com/SolaTyolo/herald/internal/service"
 )
 
@@ -27,7 +27,7 @@ type API struct {
 	messages      *service.MessageService
 	store         repository.Store
 	redis         *redis.Client
-	wasmManifest  func() []wasm.Manifest
+	routes        *routing.Table
 }
 
 func NewAPI(
@@ -41,14 +41,14 @@ func NewAPI(
 	messages *service.MessageService,
 	store repository.Store,
 	redisClient *redis.Client,
-	wasmList func() []wasm.Manifest,
+	routes *routing.Table,
 ) *API {
 	return &API{
 		cfg: cfg,
 		trigger: trigger, subscribers: subscribers, workflows: workflows,
 		topics: topics, integrations: integrations, notifications: notifications,
 		messages: messages,
-		store: store, redis: redisClient, wasmManifest: wasmList,
+		store: store, redis: redisClient, routes: routes,
 	}
 }
 
@@ -395,16 +395,19 @@ func (a *API) patchMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) listProviders(w http.ResponseWriter, r *http.Request) {
-	manifests := a.wasmManifest()
-	out := make([]map[string]any, 0, len(manifests))
-	for _, m := range manifests {
-		out = append(out, map[string]any{
-			"id":          m.ID,
-			"channel":     m.Channel,
-			"version":     m.Version,
-			"runtime":     "wasm",
-			"permissions": m.Permissions,
-		})
+	providers := a.routes.ListProviders()
+	out := make([]map[string]any, 0, len(providers))
+	for _, p := range providers {
+		item := map[string]any{
+			"id":      p.Name,
+			"channel": p.Channel,
+			"type":    p.Type,
+		}
+		if p.Type == routing.TypeRemote {
+			item["service"] = p.Service
+			item["endpoint"] = p.Endpoint
+		}
+		out = append(out, item)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"providers": out})
 }

@@ -1,13 +1,11 @@
 # Herald — Cursor Agent Guide
 
-This file orients Cursor Agent when working in `github.com/SolaTyolo/herald`.
-
 ## Read first
 
 | Doc | When |
 |-----|------|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, known limits, roadmap |
-| [docs/WASM_PROVIDERS.md](docs/WASM_PROVIDERS.md) | **New channel provider** |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, env, deployment |
+| [docs/PROVIDERS.md](docs/PROVIDERS.md) | YAML routing + Worker SDK |
 | [docs/CURSOR.md](docs/CURSOR.md) | Cursor rules, skills, workflows |
 | [README.md](README.md) | Quick start |
 
@@ -15,28 +13,30 @@ This file orients Cursor Agent when working in `github.com/SolaTyolo/herald`.
 
 - **Name:** Herald
 - **Module:** `github.com/SolaTyolo/herald`
-- **Provider model:** **WASM-only** — `plugins/wasm/*/provider.wasm`
+- **Provider model:** Traefik-style YAML — builtin `smtp_email` / `inapp` + user Delivery Workers
 
-## Non-negotiable architecture rules
+## Architecture rules
 
-1. **Core stays provider-free** — `cmd/api` / `cmd/worker` must not import provider implementations.
-2. **New channel provider** — add WASM under `plugins/wasm/<name>/` only.
-3. **Ports, not adapters** — Business code uses `repository.Store` and `wasm.Runtime` (via delivery), not GORM in domain layers.
-4. **Use `repository.IsNotFound(err)`** — No driver-specific not-found checks.
-5. **Role split** — API: migrations + bridge subscriber (webhook delivery); Worker: Asynq + bridge publish. Both need same `WASM_PLUGIN_DIR` and `REDIS_ADDR`.
-6. **In-app** — Core built-in; Worker publishes via `realtime/bridge`; API POSTs to subscriber `webhookUrl`.
-7. **Minimal diffs** — Match surrounding code; no drive-by refactors.
+1. **Builtin vs remote** — only `smtp_email` and `inapp` are builtin (local). All other channels are `remote` HTTP workers. Do not add in-process plugin runtimes.
+2. **Ports, not adapters** — Business code uses `repository.Store` and `routing.Table` / delivery, not GORM in domain layers.
+3. **Use `repository.IsNotFound(err)`** — No driver-specific not-found checks.
+4. **Role split** — API: migrations + bridge subscriber; Worker: Asynq + bridge publish. Same `PROVIDERS_CONFIG` and `REDIS_ADDR` on both.
+5. **In-app** — Core built-in; Worker persists + bridge publish; REST poll; optional `webhookUrl` on API.
+6. **Integration.providerId** must match a YAML `providerName`.
+7. **Worker SDK** (`sdk/worker`) is for **user** Delivery Workers only; Herald core must not import it.
+8. **Minimal diffs** — Match surrounding code; no drive-by refactors.
 
 ## Layer map
 
 ```
-cmd/                 → entrypoints
-internal/            → domain, service, workflow, delivery, bootstrap
-plugins/wasm/        → WASM providers
-pkg/plugin/          → shared WASM JSON contract types
+cmd/                  → api, asynq worker
+internal/             → domain, service, workflow, delivery, routing, bootstrap
+config/providers.yaml → services + providers
+pkg/contract/         → DeliveryRequest / DeliveryError / DeliveryResultEvent
+sdk/worker/           → user Delivery Worker SDK
 ```
 
-## Common commands
+## Commands
 
 ```bash
 make test
@@ -46,12 +46,13 @@ make run-worker
 make docker-up
 ```
 
-## Environment essentials
+## Environment
 
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `WASM_PLUGIN_DIR` | `./plugins/wasm` | **Required** for channel providers |
-| `REDIS_ADDR` | `localhost:6379` | Asynq + bridge when `WORKER_API_PUBSUB=redis` |
+| `PROVIDERS_CONFIG` | `./config/providers.yaml` | YAML routing (hot-reload) |
+| `DELIVERY_RESULT_MODE` | `async` | Redis result queue / `sync` HTTP body |
+| `REDIS_ADDR` | `localhost:6379` | Asynq + bridge + results |
 | `STORE_TYPE` | `db` | `file` or `db` |
 | `DEV_MODE` | `false` | local dev |
 
@@ -59,17 +60,14 @@ make docker-up
 
 | Task | Location |
 |------|----------|
-| New WASM provider | `plugins/wasm/<name>/` — see WASM_PROVIDERS.md |
-| New REST route | `internal/transport/http/handler/` + `internal/service/` |
-| Workflow logic | `internal/workflow/engine.go` |
-| WASM runtime | `internal/platform/plugin/wasm/runtime.go` |
-| Store | `internal/repository/gormstore/` + `repository.Store` |
+| YAML routing | `internal/routing/` + `config/providers.yaml` |
+| SMTP / remote / result queue | `internal/delivery/` |
+| User Delivery Worker | user repo + `sdk/worker` |
+| REST route | `internal/transport/http/handler/` + `internal/service/` |
+| Workflow | `internal/workflow/engine.go` |
+| Store | `internal/repository/` |
 
-## Known gaps
-
-See [docs/ARCHITECTURE.md §7.3](docs/ARCHITECTURE.md#73-已知限制与待办): WASM permissions, topic async fan-out, WASM instance pool, worker OTEL.
-
-## Cursor project config
+## Cursor config
 
 - Rules: `.cursor/rules/*.mdc`
 - Skills: `.cursor/skills/herald-store/`

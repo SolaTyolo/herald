@@ -1,17 +1,18 @@
 ---
-description: Herald core architecture constraints for all agent sessions
+description: Herald core architecture constraints (always apply)
 alwaysApply: true
 ---
 
 # Herald Core
 
 - Module: `github.com/SolaTyolo/herald`. Project name: **Herald**.
-- **WASM-only**: channel providers in `plugins/wasm/` only.
-- `cmd/api` and `cmd/worker` must NOT import provider implementations.
-- Delivery: `wasm.Runtime` for channel send; `in_app` is core-built-in (bridge → subscriber webhook).
+- Channel providers: Traefik-style YAML routing; builtin only `smtp_email` / `inapp`; other channels are remote HTTP workers via `sdk/worker`. Do not add in-process plugin runtimes.
+- `cmd/api` and `cmd/worker` must NOT import user provider implementations.
+- Delivery: `routing.Table` + builtin SMTP / in_app; remote → `POST /delivery` + Redis result queue (default) or sync HTTP body.
 - Persistence: `repository.Store` via `repository.Open()` — business layers use the Store port only.
 - Missing records: use `repository.IsNotFound(err)`.
-- Bootstrap roles: `RoleAPI` (migrations, bridge subscriber) vs `RoleWorker` (Asynq); same `WASM_PLUGIN_DIR` and `REDIS_ADDR` on both.
+- Bootstrap roles: `RoleAPI` (migrations, bridge subscriber) vs `RoleWorker` (Asynq); same `PROVIDERS_CONFIG` and `REDIS_ADDR` on both.
+- Worker SDK (`sdk/worker`) is for user Delivery Workers only; core does not import it.
 - Minimize diff scope; match existing patterns.
 
 See `AGENTS.md` and `docs/ARCHITECTURE.md`.

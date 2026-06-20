@@ -15,11 +15,12 @@ import (
 )
 
 func TestKafkaHTTPPubSub(t *testing.T) {
-	var gotBody []byte
+	gotBodyCh := make(chan []byte, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/topics/"):
-			gotBody, _ = io.ReadAll(r.Body)
+			body, _ := io.ReadAll(r.Body)
+			gotBodyCh <- body
 			w.WriteHeader(http.StatusOK)
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/records"):
 			ev := bridge.Event{
@@ -39,39 +40,42 @@ func TestKafkaHTTPPubSub(t *testing.T) {
 		WorkerAPIKafkaTopic:   "herald.worker-api.events",
 	}
 
-	var got bridge.Event
+	gotCh := make(chan bridge.Event, 1)
 	sub := bridge.NewKafkaHTTPSubscriber(cfg)
 	ctx := t.Context()
-	sub.Run(ctx, func(ev bridge.Event) { got = ev })
+	sub.Run(ctx, func(ev bridge.Event) { gotCh <- ev })
 	defer sub.Close()
 
 	pub := bridge.NewKafkaHTTPPublisher(cfg)
 	pub.Publish("sub-1", &domain.Message{ID: "m1", EnvID: "env-1", Title: "hi"})
 
+	gotBody := <-gotBodyCh
 	if !strings.Contains(string(gotBody), "sub-1") {
 		t.Fatalf("publish body missing key: %s", gotBody)
 	}
 
-	deadline := timeAfter(t, 2*time.Second)
-	for got.Message == nil {
-		select {
-		case <-deadline:
-			t.Fatal("timeout waiting for event")
-		default:
+	select {
+	case got := <-gotCh:
+		if got.Message == nil || got.Message.ID != "m1" {
+			t.Fatalf("got %+v", got.Message)
 		}
-	}
-	if got.Message.ID != "m1" {
-		t.Fatalf("got %+v", got.Message)
+	case <-timeAfter(t, 2*time.Second):
+		t.Fatal("timeout waiting for event")
 	}
 }
 
 func TestRabbitMQHTTPPublish(t *testing.T) {
-	var auth string
-	var payload string
+	type publishCapture struct {
+		auth    string
+		payload string
+	}
+	gotCh := make(chan publishCapture, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		auth = r.Header.Get("Authorization")
 		body, _ := io.ReadAll(r.Body)
-		payload = string(body)
+		gotCh <- publishCapture{
+			auth:    r.Header.Get("Authorization"),
+			payload: string(body),
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -90,11 +94,12 @@ func TestRabbitMQHTTPPublish(t *testing.T) {
 	pub := bridge.NewRabbitMQHTTPPublisher(cfg)
 	pub.Publish("sub-1", &domain.Message{ID: "m1", EnvID: "env-1", Title: "hello"})
 
-	if auth == "" {
+	got := <-gotCh
+	if got.auth == "" {
 		t.Fatal("expected basic auth")
 	}
-	if !strings.Contains(payload, "sub-1") {
-		t.Fatalf("payload: %s", payload)
+	if !strings.Contains(got.payload, "sub-1") {
+		t.Fatalf("payload: %s", got.payload)
 	}
 }
 
@@ -110,24 +115,21 @@ func TestLocalBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var got bridge.Event
+	gotCh := make(chan bridge.Event, 1)
 	ctx := t.Context()
-	sub.Run(ctx, func(ev bridge.Event) { got = ev })
+	sub.Run(ctx, func(ev bridge.Event) { gotCh <- ev })
 	defer sub.Close()
 
 	msg := &domain.Message{ID: "msg-1", Title: "hello"}
 	pub.Publish("sub-1", msg)
 
-	deadline := timeAfter(t, 2*time.Second)
-	for got.Message == nil {
-		select {
-		case <-deadline:
-			t.Fatal("timeout")
-		default:
+	select {
+	case got := <-gotCh:
+		if got.Message == nil || got.Message.ID != msg.ID {
+			t.Fatalf("got %+v", got.Message)
 		}
-	}
-	if got.Message.ID != msg.ID {
-		t.Fatalf("got %+v", got.Message)
+	case <-timeAfter(t, 2*time.Second):
+		t.Fatal("timeout")
 	}
 }
 

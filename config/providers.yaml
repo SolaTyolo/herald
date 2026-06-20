@@ -1,0 +1,29 @@
+# Traefik v3 FileProvider-style routing for Herald.
+# Mount at PROVIDERS_CONFIG (default ./config/providers.yaml).
+# Heat-reloaded via fsnotify; invalid edits are rejected and the previous table is kept.
+
+services:
+  # Example user delivery worker — uncomment and point at your service.
+  # user-sms-worker:
+  #   endpoint: "http://user-sms-worker:8080/delivery"
+  #   healthCheck:
+  #     path: "/health"
+  #     interval: "5s"
+  #     timeout: "2s"
+
+providers:
+  smtp_email:
+    type: builtin
+    channel: email
+    timeout: 10s
+  inapp:
+    type: builtin
+    channel: inapp
+    timeout: 5s
+
+  # Example remote providers (require matching services above):
+  # tencent_sms:
+  #   type: remote
+  #   service: user-sms-worker
+  #   channel: sms
+  #   timeout: 10s

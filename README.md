@@ -1,26 +1,27 @@
 # Herald
 
-Novu-inspired notification infrastructure in Go. Channel providers (email, sms, push, chat) are **WASM extensions**; the core is framework-only. In-app is built into the core (REST + subscriber webhook).
+Novu-inspired notification infrastructure in Go. Channel delivery uses **Traefik-style YAML routing**: builtin **SMTP** and **in-app**, plus **user Delivery Workers** for other channels.
 
 **中文文档:** [README.zh-CN.md](README.zh-CN.md)
 
-**Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · **WASM plugins:** [docs/WASM_PROVIDERS.md](docs/WASM_PROVIDERS.md)  
+**Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · **Providers:** [docs/PROVIDERS.md](docs/PROVIDERS.md)  
 **Cursor Agent:** [AGENTS.md](AGENTS.md) · [docs/CURSOR.md](docs/CURSOR.md)
 
 ## Features
 
 - Workflow engine: **email, sms, push, chat, in-app** + delay / digest / throttle
 - Subscribers, topics, preferences, integrations
-- **WASM channel providers** (wazero sandbox)
-- Pluggable storage: **file** (JSON) or **db** (PostgreSQL / MySQL / SQLite via GORM)
+- Builtin `smtp_email` + `inapp`; remote providers via user HTTP workers (`sdk/worker`)
+- Async delivery results over Redis (default); Topic fan-out via Asynq
+- Storage: **file** (JSON) or **db** (PostgreSQL / MySQL / SQLite via GORM)
 - OpenTelemetry traces & metrics
 
 ## Quick start
 
 ```bash
-cp .env.example .env   # see README.zh-CN.md for details
+cp .env.example .env
 make docker-up
-# Add WASM plugins under plugins/wasm/<name>/ (see docs/WASM_PROVIDERS.md)
+# Edit config/providers.yaml (builtin smtp_email + inapp by default)
 DEV_MODE=true make build
 
 # terminal 1
@@ -30,17 +31,17 @@ DEV_MODE=true make run-api
 make run-worker
 ```
 
-Both API and Worker must see the same `WASM_PLUGIN_DIR`.
+API and Worker must share the same `PROVIDERS_CONFIG` and `REDIS_ADDR`.
 
 ```
-Authorization: ApiKey <key>
+Authorization: Bearer <key>
 ```
 
 ## Example trigger
 
 ```bash
 curl -X POST http://localhost:8080/v1/events/trigger \
-  -H "Authorization: ApiKey $API_KEY" \
+  -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "welcome",
@@ -53,22 +54,24 @@ curl -X POST http://localhost:8080/v1/events/trigger \
 
 - `cmd/api` — REST API
 - `cmd/worker` — Asynq job processor
-- `plugins/wasm/` — WASM provider plugins
-- `pkg/plugin` — shared types & WASM JSON contract
+- `config/providers.yaml` — Traefik-style routing
+- `pkg/contract` — delivery contract
+- `sdk/worker` — user Delivery Worker SDK
 
 ## Environment
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WASM_PLUGIN_DIR` | `./plugins/wasm` | WASM plugins root |
+| `PROVIDERS_CONFIG` | `./config/providers.yaml` | YAML routing (hot-reload) |
+| `DELIVERY_RESULT_MODE` | `async` | `async` Redis queue / `sync` HTTP body |
 | `STORE_TYPE` | `db` | `file` or `db` |
 | `DB_DRIVER` | `postgres` | `postgres`, `mysql`, `sqlite` |
-| `REDIS_ADDR` | `localhost:6379` | Asynq + throttle |
+| `REDIS_ADDR` | `localhost:6379` | Asynq + bridge + result queue |
 | `ENCRYPTION_KEY` | — | 32-byte key (required in production) |
 | `DEV_MODE` | `false` | Local dev defaults |
 | `HTTP_ADDR` | `:8080` | API listen address |
 
-Full list: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#12-环境变量速查).
+Full list: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#9-环境变量) · [`.env.example`](.env.example).
 
 ## Tests
 

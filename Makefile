@@ -9,8 +9,10 @@ STORE_TYPE ?= db
 DB_DRIVER ?= postgres
 STORE_FILE_PATH ?= ./data
 
+PROVIDERS_CONFIG ?= ./config/providers.yaml
+
 export DATABASE_URL REDIS_ADDR ENCRYPTION_KEY HTTP_ADDR DEV_MODE
-export STORE_TYPE DB_DRIVER STORE_FILE_PATH
+export STORE_TYPE DB_DRIVER STORE_FILE_PATH PROVIDERS_CONFIG
 
 docker-up:
 	docker compose -f deploy/docker-compose.yml up -d

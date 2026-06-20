@@ -33,6 +33,15 @@ func (s *TriggerService) Trigger(ctx context.Context, envID string, req *domain.
 		txID = uuid.NewString()
 	}
 
+	if req.Payload == nil {
+		req.Payload = json.RawMessage("{}")
+	}
+
+	// Topic triggers: validate + enqueue async fan-out (do not block HTTP on N subscribers).
+	if isTopicTarget(req) {
+		return s.enqueueTopicFanout(ctx, envID, wf, txID, req)
+	}
+
 	subscribers, err := s.resolveSubscribers(ctx, envID, req)
 	if err != nil {
 		return nil, err
@@ -42,10 +51,6 @@ func (s *TriggerService) Trigger(ctx context.Context, envID string, req *domain.
 	}
 	if len(subscribers) > s.maxRecipients {
 		return nil, fmt.Errorf("max %d recipients per trigger", s.maxRecipients)
-	}
-
-	if req.Payload == nil {
-		req.Payload = json.RawMessage("{}")
 	}
 
 	resp := &domain.TriggerResponse{TransactionID: txID}
@@ -59,8 +64,93 @@ func (s *TriggerService) Trigger(ctx context.Context, envID string, req *domain.
 	return resp, nil
 }
 
+func isTopicTarget(req *domain.TriggerRequest) bool {
+	return req.To.Type == "Topic" || req.To.TopicKey != ""
+}
+
+func (s *TriggerService) enqueueTopicFanout(ctx context.Context, envID string, wf *domain.Workflow, txID string, req *domain.TriggerRequest) (*domain.TriggerResponse, error) {
+	key := req.To.TopicKey
+	if key == "" {
+		return nil, fmt.Errorf("topicKey required")
+	}
+	topic, err := s.store.GetTopic(ctx, envID, key)
+	if err != nil {
+		return nil, err
+	}
+	var exclude *string
+	if req.Actor != "" {
+		if actorSub, err := s.store.GetSubscriber(ctx, envID, req.Actor); err == nil {
+			exclude = &actorSub.ID
+		}
+	}
+	subs, err := s.store.ListTopicSubscribers(ctx, topic.ID, exclude)
+	if err != nil {
+		return nil, err
+	}
+	if len(subs) == 0 {
+		return nil, fmt.Errorf("no recipients resolved")
+	}
+	if len(subs) > s.maxRecipients {
+		return nil, fmt.Errorf("max %d recipients per trigger", s.maxRecipients)
+	}
+
+	if err := s.queue.EnqueueTopicFanout(ctx, asynqqueue.TopicFanoutPayload{
+		EnvID:         envID,
+		TransactionID: txID,
+		WorkflowID:    wf.ID,
+		TopicKey:      key,
+		Actor:         req.Actor,
+		Payload:       req.Payload,
+	}); err != nil {
+		return nil, err
+	}
+	return &domain.TriggerResponse{TransactionID: txID, Async: true}, nil
+}
+
+// ProcessTopicFanout creates notifications for each topic subscriber (worker-side).
+func (s *TriggerService) ProcessTopicFanout(ctx context.Context, p asynqqueue.TopicFanoutPayload) error {
+	wf, err := s.store.GetWorkflow(ctx, p.EnvID, p.WorkflowID)
+	if err != nil {
+		return err
+	}
+	topic, err := s.store.GetTopic(ctx, p.EnvID, p.TopicKey)
+	if err != nil {
+		return err
+	}
+	var exclude *string
+	if p.Actor != "" {
+		if actorSub, err := s.store.GetSubscriber(ctx, p.EnvID, p.Actor); err == nil {
+			exclude = &actorSub.ID
+		}
+	}
+	subs, err := s.store.ListTopicSubscribers(ctx, topic.ID, exclude)
+	if err != nil {
+		return err
+	}
+	if len(subs) == 0 {
+		return nil
+	}
+	if len(subs) > s.maxRecipients {
+		return fmt.Errorf("max %d recipients per trigger", s.maxRecipients)
+	}
+
+	payload := p.Payload
+	if payload == nil {
+		payload = json.RawMessage("{}")
+	}
+	var firstErr error
+	for _, sub := range subs {
+		if _, err := s.createAndEnqueue(ctx, p.EnvID, wf, sub, payload, p.TransactionID); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
+}
+
 func (s *TriggerService) resolveSubscribers(ctx context.Context, envID string, req *domain.TriggerRequest) ([]domain.Subscriber, error) {
-	if req.To.Type == "Topic" || req.To.TopicKey != "" {
+	if isTopicTarget(req) {
 		key := req.To.TopicKey
 		if key == "" {
 			return nil, fmt.Errorf("topicKey required")
@@ -127,7 +217,6 @@ func (s *TriggerService) createAndEnqueue(ctx context.Context, envID string, wf 
 		return "", err
 	}
 
-	// reload first job id
 	jobs, err := s.store.GetJobsByNotification(ctx, notif.ID)
 	if err != nil || len(jobs) == 0 {
 		return notif.ID, err
