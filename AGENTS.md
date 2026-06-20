@@ -24,7 +24,7 @@ This file orients Cursor Agent when working in `github.com/SolaTyolo/herald`.
 3. **Ports, not adapters** — Business code uses `repository.Store` and `wasm.Runtime` (via delivery), not GORM in domain layers.
 4. **Use `repository.IsNotFound(err)`** — No driver-specific not-found checks.
 5. **Role split** — API: migrations + bridge subscriber (webhook delivery); Worker: Asynq + bridge publish. Both need same `WASM_PLUGIN_DIR` and `REDIS_ADDR`.
-6. **In-app** — Core built-in; Worker publishes via `realtime/bridge`; API POSTs to subscriber `webhookUrl`.
+6. **In-app** — Core built-in; Worker persists messages + bridge publish; clients poll REST; optional `webhookUrl` push on API.
 7. **Minimal diffs** — Match surrounding code; no drive-by refactors.
 
 ## Layer map

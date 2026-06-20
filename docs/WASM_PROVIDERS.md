@@ -138,11 +138,11 @@ sequenceDiagram
 
 ```bash
 # 查看已加载 WASM manifest
-curl -H "Authorization: ApiKey $KEY" http://localhost:8080/v1/providers
+curl -H "Authorization: Bearer $KEY" http://localhost:8080/v1/providers
 
 # 创建 Integration（无需改 Go 代码）
 curl -X POST http://localhost:8080/v1/integrations \
-  -H "Authorization: ApiKey $KEY" \
+  -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "channel": "email",

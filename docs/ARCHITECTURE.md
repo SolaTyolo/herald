@@ -6,7 +6,7 @@
 
 ## 1. 项目概述
 
-**Herald** 是受 [Novu](https://github.com/novuhq/novu) 启发的通知基础设施，采用 [Paca](https://github.com/Paca-AI/paca) 风格的 **WASM 插件架构**：所有 channel provider（email / sms / push / chat）以 WASM 扩展交付；**核心不含任何 channel provider 实现**。`in_app` 由核心内置（写库 + subscriber `webhookUrl` 投递）。
+**Herald** 是受 [Novu](https://github.com/novuhq/novu) 启发的通知基础设施，采用 [Paca](https://github.com/Paca-AI/paca) 风格的 **WASM 插件架构**：所有 channel provider（email / sms / push / chat）以 WASM 扩展交付；**核心不含任何 channel provider 实现**。`in_app` 由核心内置（写库 + 客户端 REST 拉取；可选 subscriber `webhookUrl` 主动推送）。
 
 | 组件 | 技术 |
 |------|------|
@@ -14,7 +14,7 @@
 | Worker | Asynq + Redis |
 | 持久化 | file：JSON 文件；db：GORM（PostgreSQL · MySQL · SQLite） |
 | **Channel 插件** | wazero WASM + `plugins/wasm/*/provider.wasm` |
-| In-app | 核心内置（`delivery` 写库 + Worker↔API `bridge` + subscriber webhook） |
+| In-app | 核心内置（写库 + REST 查询；可选 webhook 推送） |
 | 可观测性 | slog + OpenTelemetry（traces / metrics） |
 
 ## 2. 目录与分层
@@ -88,7 +88,7 @@ flowchart TB
 - **扩展与核心分离**：`cmd/*` 不 import 任何 provider 实现；新增 provider 仅增 WASM 目录 + Integration
 - **双进程协作**：API 负责 HTTP/Migration；Worker 负责 job 执行；**两者须挂载同一 `WASM_PLUGIN_DIR`**
 - **Worker ↔ API 事件总线**：`realtime/bridge`（redis / kafka-http / rabbitmq-http），与 Asynq 队列分离
-- **In-app 客户端投递**：subscriber `webhookUrl`，不由 Herald 维护长连接
+- **In-app 客户端**：默认 `GET /v1/subscribers/{id}/messages` 拉取；若配置了 `webhookUrl` 则额外 POST 推送到下游
 
 ## 3. 持久化
 
@@ -156,14 +156,15 @@ SDK：`plugins/sdk/herald/`（TinyGo `//go:wasmimport`）
 ```
 in_app 步骤 → Worker 写 messages 表 → bridge.Publisher
          → (redis | kafka-http | rabbitmq-http)
-         → API bridge.Subscriber → POST subscriber.webhookUrl
+         → API bridge.Subscriber →（可选）POST subscriber.webhookUrl
 ```
 
 - **Worker ↔ API**：`realtime/bridge`，与 Asynq 队列无关；环境变量 `WORKER_API_PUBSUB`
-- **客户端投递**：subscriber 上的 `webhookUrl`，下游自行接入；可选 `GET /messages` 轮询
-- **redis**（默认）、**kafka-http**、**rabbitmq-http**（Rabbit 订阅经 `cmd/rabbit-inapp-bridge` sidecar）
+- **主路径**：Message 落库，客户端 `GET /v1/subscribers/{id}/messages` 拉取（PATCH 标记已读）
+- **可选推送**：subscriber 配置了 `webhookUrl` 时，API 额外 POST 到下游
+- **redis**（默认）、**kafka-http**、**rabbitmq-http**（Rabbit 订阅经 sidecar）
 
-创建 subscriber 示例：
+创建 subscriber 示例（webhook 可选）：
 
 ```json
 { "subscriberId": "user-1", "webhookUrl": "https://your-app.example/hooks/in-app" }
@@ -173,7 +174,7 @@ in_app 步骤 → Worker 写 messages 表 → bridge.Publisher
 
 ```
 delivery.SendChannel
-  ├─ in_app  → CreateMessage + bridge.Publisher（API 侧 webhook 投递）
+  ├─ in_app  → CreateMessage + bridge.Publisher（API 可选 webhook 推送）
   └─ channel → wasm.HasProvider(id) → wasm.Send（未加载则报错）
 ```
 

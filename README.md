@@ -1,6 +1,6 @@
 # Herald
 
-Novu-inspired notification infrastructure in Go. Channel providers (email, sms, push, chat) are **WASM extensions**; the core is framework-only. In-app is built into the core (REST + subscriber webhook).
+Novu-inspired notification infrastructure in Go. Channel providers (email, sms, push, chat) are **WASM extensions**; the core is framework-only. In-app is built into the core (persist messages + REST query; optional subscriber webhook push).
 
 **中文文档:** [README.zh-CN.md](README.zh-CN.md)
 
@@ -33,14 +33,14 @@ make run-worker
 Both API and Worker must see the same `WASM_PLUGIN_DIR`.
 
 ```
-Authorization: ApiKey <key>
+Authorization: Bearer <key>
 ```
 
 ## Example trigger
 
 ```bash
 curl -X POST http://localhost:8080/v1/events/trigger \
-  -H "Authorization: ApiKey $API_KEY" \
+  -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "welcome",

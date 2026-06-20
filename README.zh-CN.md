@@ -1,6 +1,6 @@
 # Herald
 
-受 [Novu](https://github.com/novuhq/novu) 启发的 Go 通知基础设施。渠道 Provider（email / sms / push / chat）以 **WASM 插件**交付；**核心不含 Provider 实现**。`in_app` 由核心内置（REST + subscriber webhook）。
+受 [Novu](https://github.com/novuhq/novu) 启发的 Go 通知基础设施。渠道 Provider（email / sms / push / chat）以 **WASM 插件**交付；**核心不含 Provider 实现**。`in_app` 由核心内置（写库 + REST 查询；可选 `webhookUrl` 推送下游）。
 
 **English:** [README.md](README.md)
 
@@ -27,7 +27,7 @@ Client → API（REST）
          Redis / Asynq
            ↓
          Worker → workflow → delivery
-                    ├─ in_app  → 写库 + bridge → API → POST webhookUrl
+                    ├─ in_app  → 写库 + bridge → API（可选 webhook 推送）
                     └─ 其他渠道 → WASM Send
 ```
 
@@ -82,7 +82,7 @@ make run-worker
 所有业务接口（除 `/health`）需要：
 
 ```
-Authorization: ApiKey <your-key>
+Authorization: Bearer <your-key>
 ```
 
 ## 示例：触发通知
@@ -91,7 +91,7 @@ Authorization: ApiKey <your-key>
 export API_KEY=hr_xxxxxxxx   # 启动时日志中的 key
 
 curl -X POST http://localhost:8080/v1/events/trigger \
-  -H "Authorization: ApiKey $API_KEY" \
+  -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "welcome",
@@ -104,7 +104,7 @@ curl -X POST http://localhost:8080/v1/events/trigger \
 
 ```bash
 curl -X POST http://localhost:8080/v1/integrations \
-  -H "Authorization: ApiKey $API_KEY" \
+  -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "channel": "email",
@@ -119,7 +119,7 @@ curl -X POST http://localhost:8080/v1/integrations \
 查看已加载 Provider：
 
 ```bash
-curl -H "Authorization: ApiKey $API_KEY" http://localhost:8080/v1/providers
+curl -H "Authorization: Bearer $API_KEY" http://localhost:8080/v1/providers
 ```
 
 ## 目录结构
