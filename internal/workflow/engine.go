@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -18,12 +19,13 @@ import (
 
 type Engine struct {
 	store    repository.Store
-	queue    *asynqqueue.Client
+	queue    asynqqueue.Enqueuer
 	delivery *delivery.Service
 	redis    *redis.Client
+	throttle memThrottle
 }
 
-func NewEngine(store repository.Store, queue *asynqqueue.Client, delivery *delivery.Service, redisClient *redis.Client) *Engine {
+func NewEngine(store repository.Store, queue asynqqueue.Enqueuer, delivery *delivery.Service, redisClient *redis.Client) *Engine {
 	return &Engine{store: store, queue: queue, delivery: delivery, redis: redisClient}
 }
 
@@ -260,7 +262,7 @@ func (e *Engine) flushDigestByJob(ctx context.Context, envID, jobID string) erro
 		return e.store.UpdateJob(ctx, job)
 	}
 
-	rendered, err := template.RenderMessageTemplate(nextStep.Template, renderCtx)
+	rendered, err := e.renderStep(ctx, envID, nextStep, nextStep.Type.Channel(), renderCtx)
 	if err != nil {
 		return err
 	}
@@ -303,6 +305,43 @@ func (e *Engine) enqueueFollowingSteps(ctx context.Context, jc *JobContext, job 
 	return e.store.UpdateNotificationStatus(ctx, jc.Notification.ID, domain.NotificationCompleted)
 }
 
+type memThrottle struct {
+	mu sync.Mutex
+	m  map[string]throttleSlot
+}
+
+type throttleSlot struct {
+	count int
+	exp   time.Time
+}
+
+func (e *Engine) incrThrottle(ctx context.Context, key string, window time.Duration) (int64, error) {
+	if e.redis != nil {
+		count, err := e.redis.Incr(ctx, key).Result()
+		if err != nil {
+			return 0, err
+		}
+		if count == 1 {
+			e.redis.Expire(ctx, key, window)
+		}
+		return count, nil
+	}
+	now := time.Now()
+	e.throttle.mu.Lock()
+	defer e.throttle.mu.Unlock()
+	if e.throttle.m == nil {
+		e.throttle.m = map[string]throttleSlot{}
+	}
+	slot, ok := e.throttle.m[key]
+	if !ok || !now.Before(slot.exp) {
+		e.throttle.m[key] = throttleSlot{count: 1, exp: now.Add(window)}
+		return 1, nil
+	}
+	slot.count++
+	e.throttle.m[key] = slot
+	return int64(slot.count), nil
+}
+
 func (e *Engine) execThrottle(ctx context.Context, jc *JobContext, job *domain.Job) error {
 	meta := jc.Step.Metadata
 	key := meta.ThrottleKey
@@ -318,12 +357,9 @@ func (e *Engine) execThrottle(ctx context.Context, jc *JobContext, job *domain.J
 		window = 60
 	}
 	redisKey := fmt.Sprintf("throttle:%s:%s", jc.EnvID, key)
-	count, err := e.redis.Incr(ctx, redisKey).Result()
+	count, err := e.incrThrottle(ctx, redisKey, time.Duration(window)*time.Second)
 	if err != nil {
 		return err
-	}
-	if count == 1 {
-		e.redis.Expire(ctx, redisKey, time.Duration(window)*time.Second)
 	}
 	if int(count) > limit {
 		action := meta.ThrottleAction
@@ -353,7 +389,7 @@ func (e *Engine) execChannel(ctx context.Context, jc *JobContext, job *domain.Jo
 
 	stepMeta := map[string]any{}
 	renderCtx := delivery.BuildRenderContext(jc.Subscriber, jc.Notification.Payload, stepMeta)
-	rendered, err := template.RenderMessageTemplate(jc.Step.Template, renderCtx)
+	rendered, err := e.renderStep(ctx, jc.EnvID, jc.Step, jc.Step.Type.Channel(), renderCtx)
 	if err != nil {
 		return err
 	}
@@ -366,6 +402,25 @@ func (e *Engine) execChannel(ctx context.Context, jc *JobContext, job *domain.Jo
 	}
 	_, err = e.delivery.SendChannel(ctx, jc.EnvID, jc.Step.Type.Channel(), jc.Subscriber, rendered, &jid, sendCtx)
 	return err
+}
+
+func (e *Engine) renderStep(ctx context.Context, envID string, step *domain.WorkflowStep, channel domain.ChannelType, renderCtx template.RenderContext) (*domain.MessageTemplate, error) {
+	src := step.Template
+	if step.TemplateID != "" {
+		stored, err := e.store.GetTemplate(ctx, envID, step.TemplateID)
+		if err != nil {
+			if repository.IsNotFound(err) {
+				return nil, fmt.Errorf("template %s not found", step.TemplateID)
+			}
+			return nil, err
+		}
+		active := stored.ActiveVersion()
+		if active == nil {
+			return nil, fmt.Errorf("template %s has no active version", step.TemplateID)
+		}
+		src = active.AsMessage(channel)
+	}
+	return template.RenderMessageTemplate(src, renderCtx)
 }
 
 func (e *Engine) checkPreferences(ctx context.Context, jc *JobContext) bool {

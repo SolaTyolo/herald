@@ -27,3 +27,15 @@ func TestRenderMessageTemplate(t *testing.T) {
 		t.Fatalf("content: %s", out.Content)
 	}
 }
+
+func TestRenderDynamicDataAtRoot(t *testing.T) {
+	out, err := template.Render("Hi {{.name}}", template.RenderContext{
+		Payload: map[string]any{"name": "Ada"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "Hi Ada" {
+		t.Fatalf("got %q", out)
+	}
+}

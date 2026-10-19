@@ -1,12 +1,5 @@
 package contract
 
-import "context"
-
-// SendProvider is the unified delivery interface for builtin and remote workers.
-type SendProvider interface {
-	Send(ctx context.Context, cfg ProviderConfig, msg Message) DeliveryError
-}
-
 // ProviderConfig holds channel credentials / settings.
 // Vendor-specific fields go in Raw; do not add top-level vendor fields.
 type ProviderConfig struct {

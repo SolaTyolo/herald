@@ -46,12 +46,14 @@ func Render(tmpl string, ctx RenderContext) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	data := map[string]any{
-		"subscriber": ctx.Subscriber,
-		"payload":    ctx.Payload,
-		"step":       ctx.Step,
-		"actor":      ctx.Actor,
+	data := map[string]any{}
+	for k, v := range ctx.Payload {
+		data[k] = v
 	}
+	data["subscriber"] = ctx.Subscriber
+	data["payload"] = ctx.Payload
+	data["step"] = ctx.Step
+	data["actor"] = ctx.Actor
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("render template: %w", err)

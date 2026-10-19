@@ -21,6 +21,23 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type localTasks struct {
+	engine  *workflow.Engine
+	trigger *service.TriggerService
+}
+
+func (t *localTasks) ProcessJob(ctx context.Context, envID, jobID string) error {
+	return t.engine.ProcessJob(ctx, envID, jobID)
+}
+
+func (t *localTasks) FlushDigest(ctx context.Context, envID, bucketID, jobID string) error {
+	return t.engine.FlushDigest(ctx, envID, bucketID, jobID)
+}
+
+func (t *localTasks) ProcessTopicFanout(ctx context.Context, p asynqqueue.TopicFanoutPayload) error {
+	return t.trigger.ProcessTopicFanout(ctx, p)
+}
+
 type Role int
 
 const (
@@ -32,7 +49,7 @@ type App struct {
 	Config    *config.Config
 	Store     repository.Store
 	Redis     *redis.Client
-	Queue     *asynqqueue.Client
+	Queue     asynqqueue.Enqueuer
 	BridgeSub bridge.Subscriber
 	Routes    *routing.Table
 	Engine    *workflow.Engine
@@ -88,9 +105,14 @@ func New(ctx context.Context, role Role) (*App, error) {
 		return nil, err
 	}
 
-	redisOpt := asynq.RedisClientOpt{Addr: cfg.RedisAddr}
-	queueClient := asynqqueue.NewClient(redisOpt)
-	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	var redisClient *redis.Client
+	var queueClient asynqqueue.Enqueuer
+	if cfg.UsesAsynq() {
+		redisClient = redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+		queueClient = asynqqueue.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisAddr})
+	} else {
+		queueClient = asynqqueue.NewLocal()
+	}
 
 	var bridgeSub bridge.Subscriber
 	eventPub, err := bridge.OpenPublisher(cfg, redisClient)
@@ -132,6 +154,9 @@ func New(ctx context.Context, role Role) (*App, error) {
 	})
 	engine := workflow.NewEngine(store, queueClient, deliverySvc, redisClient)
 	triggerSvc := service.NewTriggerService(store, queueClient, cfg.MaxRecipients)
+	if local, ok := queueClient.(*asynqqueue.Local); ok {
+		local.Bind(&localTasks{engine: engine, trigger: triggerSvc})
+	}
 
 	app := &App{
 		Config: cfg, Store: store, Redis: redisClient, Queue: queueClient,
@@ -146,11 +171,12 @@ func New(ctx context.Context, role Role) (*App, error) {
 		integrationSvc := service.NewIntegrationService(store, enc, routes)
 		notificationSvc := service.NewNotificationQueryService(store)
 		messageSvc := service.NewMessageService(store)
+		templateSvc := service.NewTemplateService(store)
 
 		app.Handler = handler.NewAPI(
 			cfg,
 			triggerSvc, subscriberSvc, workflowSvc, topicSvc,
-			integrationSvc, notificationSvc, messageSvc,
+			integrationSvc, notificationSvc, messageSvc, templateSvc,
 			store, redisClient, routes,
 		)
 	}
@@ -165,9 +191,13 @@ func (a *App) Close() {
 	if a.BridgeSub != nil {
 		a.BridgeSub.Close()
 	}
-	a.Queue.Close()
+	if a.Queue != nil {
+		_ = a.Queue.Close()
+	}
 	_ = a.Store.Close()
-	_ = a.Redis.Close()
+	if a.Redis != nil {
+		_ = a.Redis.Close()
+	}
 	if a.Shutdown != nil {
 		_ = a.Shutdown(context.Background())
 	}

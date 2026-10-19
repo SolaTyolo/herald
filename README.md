@@ -10,8 +10,9 @@ Novu-inspired notification infrastructure in Go. Channel delivery uses **Traefik
 ## Features
 
 - Workflow engine: **email, sms, push, chat, in-app** + delay / digest / throttle
+- **Dynamic templates**: versions with one active version; workflow steps reference `templateId` and render trigger payload
 - Subscribers, topics, preferences, integrations
-- Builtin `smtp_email` + `inapp`; remote providers via user HTTP workers (`sdk/worker`)
+- Builtin `smtp_email` + `inapp`; remote providers via user HTTP workers (`POST /delivery`)
 - Async delivery results over Redis (default); Topic fan-out via Asynq
 - Storage: **file** (JSON) or **db** (PostgreSQL / MySQL / SQLite via GORM)
 - OpenTelemetry traces & metrics
@@ -31,7 +32,7 @@ DEV_MODE=true make run-api
 make run-worker
 ```
 
-API and Worker must share the same `PROVIDERS_CONFIG` and `REDIS_ADDR`.
+`QUEUE_MODE=asynq` (default): API and Worker share `PROVIDERS_CONFIG` and `REDIS_ADDR`. `QUEUE_MODE=local` runs jobs in the API process and does not use Redis.
 
 ```
 Authorization: Bearer <key>
@@ -55,8 +56,7 @@ curl -X POST http://localhost:8080/v1/events/trigger \
 - `cmd/api` — REST API
 - `cmd/worker` — Asynq job processor
 - `config/providers.yaml` — Traefik-style routing
-- `pkg/contract` — delivery contract
-- `sdk/worker` — user Delivery Worker SDK
+- `pkg/contract` — delivery contract for user HTTP workers
 
 ## Environment
 
@@ -66,7 +66,8 @@ curl -X POST http://localhost:8080/v1/events/trigger \
 | `DELIVERY_RESULT_MODE` | `async` | `async` Redis queue / `sync` HTTP body |
 | `STORE_TYPE` | `db` | `file` or `db` |
 | `DB_DRIVER` | `postgres` | `postgres`, `mysql`, `sqlite` |
-| `REDIS_ADDR` | `localhost:6379` | Asynq + bridge + result queue |
+| `QUEUE_MODE` | `asynq` | `local` (no Redis) or `asynq` |
+| `REDIS_ADDR` | `localhost:6379` | Only when `QUEUE_MODE=asynq` |
 | `ENCRYPTION_KEY` | — | 32-byte key (required in production) |
 | `DEV_MODE` | `false` | Local dev defaults |
 | `HTTP_ADDR` | `:8080` | API listen address |

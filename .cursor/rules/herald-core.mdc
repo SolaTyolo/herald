@@ -6,13 +6,13 @@ alwaysApply: true
 # Herald Core
 
 - Module: `github.com/SolaTyolo/herald`. Project name: **Herald**.
-- Channel providers: Traefik-style YAML routing; builtin only `smtp_email` / `inapp`; other channels are remote HTTP workers via `sdk/worker`. Do not add in-process plugin runtimes.
+- Channel providers: Traefik-style YAML routing; builtin only `smtp_email` / `inapp`; other channels are user-implemented remote HTTP workers (`POST /delivery`). Do not add in-process plugin runtimes.
 - `cmd/api` and `cmd/worker` must NOT import user provider implementations.
 - Delivery: `routing.Table` + builtin SMTP / in_app; remote → `POST /delivery` + Redis result queue (default) or sync HTTP body.
 - Persistence: `repository.Store` via `repository.Open()` — business layers use the Store port only.
 - Missing records: use `repository.IsNotFound(err)`.
-- Bootstrap roles: `RoleAPI` (migrations, bridge subscriber) vs `RoleWorker` (Asynq); same `PROVIDERS_CONFIG` and `REDIS_ADDR` on both.
-- Worker SDK (`sdk/worker`) is for user Delivery Workers only; core does not import it.
+- `QUEUE_MODE=local` runs jobs in-process and does not use Redis. `QUEUE_MODE=asynq` splits `RoleAPI` (migrations, bridge subscriber) and `RoleWorker` (Asynq); both share `PROVIDERS_CONFIG` and `REDIS_ADDR`.
+- User Delivery Workers are external processes. Core posts `pkg/contract.DeliveryRequest` and must not import user provider implementations.
 - Minimize diff scope; match existing patterns.
 
 See `AGENTS.md` and `docs/ARCHITECTURE.md`.

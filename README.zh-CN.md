@@ -7,15 +7,16 @@
 | 文档 | 说明 |
 |------|------|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构、数据流、环境变量 |
-| [docs/PROVIDERS.md](docs/PROVIDERS.md) | YAML 路由 + Worker SDK |
+| [docs/PROVIDERS.md](docs/PROVIDERS.md) | YAML 路由 + 用户 Worker 契约 |
 | [docs/CURSOR.md](docs/CURSOR.md) | Cursor Agent 工作流 |
 | [AGENTS.md](AGENTS.md) | Agent 约束 |
 
 ## 特性
 
 - **工作流引擎**：email / sms / push / chat / in_app + delay / digest / throttle
+- **动态模板**：多版本、一份生效；步骤用 `templateId` 引用，payload 做变量
 - 订阅者、Topic、偏好、Integration
-- **内置** `smtp_email` / `inapp`；**远端**走用户 HTTP Worker（`sdk/worker`）
+- **内置** `smtp_email` / `inapp`；**远端**走用户自建 HTTP Worker（`POST /delivery`）
 - 默认 Redis **异步结果队列**；Topic 异步 fan-out
 - 存储：**file** 或 **db**（PostgreSQL / MySQL / SQLite，GORM）
 - OpenTelemetry 链路 / 指标
@@ -35,7 +36,7 @@ Client → API（REST）
 
 - **API**：HTTP、迁移；Topic 触发返回 `async: true`
 - **Worker**：工作流步骤 + Topic fan-out
-- 共用 `PROVIDERS_CONFIG` 与 `REDIS_ADDR`
+- `QUEUE_MODE=asynq`（默认）时共用 `PROVIDERS_CONFIG` 与 `REDIS_ADDR`；`local` 单进程、不用 Redis
 
 ## 快速开始
 
@@ -106,8 +107,7 @@ internal/
   delivery/            smtp / in_app / remote + 结果队列
   routing/             YAML 路由 + 热加载 + 健康探测
   repository/          Store 端口
-pkg/contract/          投递契约
-sdk/worker/            用户 Delivery Worker SDK
+pkg/contract/          投递契约（用户 Worker 按此实现）
 ```
 
 ## 环境变量
@@ -119,7 +119,8 @@ sdk/worker/            用户 Delivery Worker SDK
 | `ENCRYPTION_KEY` | — | **32 字节** |
 | `PROVIDERS_CONFIG` | `./config/providers.yaml` | YAML 路由 |
 | `DELIVERY_RESULT_MODE` | `async` | `async` / `sync` |
-| `REDIS_ADDR` | `localhost:6379` | Asynq + bridge + 结果队列 |
+| `QUEUE_MODE` | `asynq` | `local` 或 `asynq` |
+| `REDIS_ADDR` | `localhost:6379` | 仅 `asynq` 需要 |
 | `STORE_TYPE` | `db` | `file` 或 `db` |
 
 完整列表见 [.env.example](.env.example) 与 [ARCHITECTURE §9](docs/ARCHITECTURE.md#9-环境变量)。

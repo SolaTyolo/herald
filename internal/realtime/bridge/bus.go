@@ -6,16 +6,6 @@ import (
 	"github.com/SolaTyolo/herald/internal/domain"
 )
 
-// Backend selects the Worker ↔ API event transport (not client delivery).
-type Backend string
-
-const (
-	BackendRedis        Backend = "redis"
-	BackendLocal        Backend = "local"
-	BackendRabbitMQHTTP Backend = "rabbitmq-http"
-	BackendKafkaHTTP    Backend = "kafka-http"
-)
-
 const DefaultChannel = "herald:worker-api:events"
 
 // Event is the wire format for cross-process Worker → API notification.

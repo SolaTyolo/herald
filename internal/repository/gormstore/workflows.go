@@ -38,7 +38,7 @@ func (s *Store) CreateWorkflow(ctx context.Context, envID string, wf *domain.Wor
 			meta, _ := json.Marshal(step.Metadata)
 			if err := tx.Create(&workflowStepModel{
 				ID: step.ID, WorkflowID: wf.ID, StepOrder: step.StepOrder, StepType: string(step.Type),
-				Template: tmpl, Filters: filters, Metadata: meta, CreatedAt: step.CreatedAt,
+				TemplateID: step.TemplateID, Template: tmpl, Filters: filters, Metadata: meta, CreatedAt: step.CreatedAt,
 			}).Error; err != nil {
 				return err
 			}
@@ -131,7 +131,7 @@ func (s *Store) UpdateWorkflow(ctx context.Context, envID string, wf *domain.Wor
 			meta, _ := json.Marshal(step.Metadata)
 			if err := tx.Create(&workflowStepModel{
 				ID: step.ID, WorkflowID: wf.ID, StepOrder: step.StepOrder, StepType: string(step.Type),
-				Template: tmpl, Filters: filters, Metadata: meta, CreatedAt: time.Now(),
+				TemplateID: step.TemplateID, Template: tmpl, Filters: filters, Metadata: meta, CreatedAt: time.Now(),
 			}).Error; err != nil {
 				return err
 			}

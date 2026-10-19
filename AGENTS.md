@@ -5,7 +5,7 @@
 | Doc | When |
 |-----|------|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, env, deployment |
-| [docs/PROVIDERS.md](docs/PROVIDERS.md) | YAML routing + Worker SDK |
+| [docs/PROVIDERS.md](docs/PROVIDERS.md) | YAML routing + remote worker contract |
 | [docs/CURSOR.md](docs/CURSOR.md) | Cursor rules, skills, workflows |
 | [README.md](README.md) | Quick start |
 
@@ -20,10 +20,10 @@
 1. **Builtin vs remote** — only `smtp_email` and `inapp` are builtin (local). All other channels are `remote` HTTP workers. Do not add in-process plugin runtimes.
 2. **Ports, not adapters** — Business code uses `repository.Store` and `routing.Table` / delivery, not GORM in domain layers.
 3. **Use `repository.IsNotFound(err)`** — No driver-specific not-found checks.
-4. **Role split** — API: migrations + bridge subscriber; Worker: Asynq + bridge publish. Same `PROVIDERS_CONFIG` and `REDIS_ADDR` on both.
+4. **Role split** — `QUEUE_MODE=asynq`: API migrations + bridge subscriber; Worker runs Asynq. Same `PROVIDERS_CONFIG` and `REDIS_ADDR`. `local`: one process, no Redis.
 5. **In-app** — Core built-in; Worker persists + bridge publish; REST poll; optional `webhookUrl` on API.
 6. **Integration.providerId** must match a YAML `providerName`.
-7. **Worker SDK** (`sdk/worker`) is for **user** Delivery Workers only; Herald core must not import it.
+7. **Remote workers** live in the user's process. Herald posts `pkg/contract.DeliveryRequest` to `POST /delivery`. Core must not import user provider implementations.
 8. **Minimal diffs** — Match surrounding code; no drive-by refactors.
 
 ## Layer map
@@ -33,7 +33,6 @@ cmd/                  → api, asynq worker
 internal/             → domain, service, workflow, delivery, routing, bootstrap
 config/providers.yaml → services + providers
 pkg/contract/         → DeliveryRequest / DeliveryError / DeliveryResultEvent
-sdk/worker/           → user Delivery Worker SDK
 ```
 
 ## Commands
@@ -52,7 +51,8 @@ make docker-up
 |----------|---------|-------|
 | `PROVIDERS_CONFIG` | `./config/providers.yaml` | YAML routing (hot-reload) |
 | `DELIVERY_RESULT_MODE` | `async` | Redis result queue / `sync` HTTP body |
-| `REDIS_ADDR` | `localhost:6379` | Asynq + bridge + results |
+| `QUEUE_MODE` | `asynq` | `local` or `asynq` |
+| `REDIS_ADDR` | `localhost:6379` | required only for `asynq` |
 | `STORE_TYPE` | `db` | `file` or `db` |
 | `DEV_MODE` | `false` | local dev |
 
@@ -62,8 +62,9 @@ make docker-up
 |------|----------|
 | YAML routing | `internal/routing/` + `config/providers.yaml` |
 | SMTP / remote / result queue | `internal/delivery/` |
-| User Delivery Worker | user repo + `sdk/worker` |
+| User Delivery Worker | user's own service; contract in `pkg/contract` |
 | REST route | `internal/transport/http/handler/` + `internal/service/` |
+| Dynamic templates | `internal/domain/template.go` + `internal/template/` + Store |
 | Workflow | `internal/workflow/engine.go` |
 | Store | `internal/repository/` |
 
@@ -71,3 +72,4 @@ make docker-up
 
 - Rules: `.cursor/rules/*.mdc`
 - Skills: `.cursor/skills/herald-store/`
+- CodeGraph: `.cursor/mcp.json` — use `codegraph_explore` for structure, call paths, and impact before grepping source

@@ -88,7 +88,7 @@ func (s *localSubscriber) Run(ctx context.Context, handler EventHandler) {
 			}
 		}
 	}()
-	slog.Warn("worker-api bridge using local backend; not suitable for separate API/Worker processes")
+	slog.Info("worker-api bridge using in-process bus")
 }
 
 func (s *localSubscriber) Close() {

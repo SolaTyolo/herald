@@ -81,34 +81,11 @@ providers:
 
 写 `messages` + bridge；可选 subscriber `webhookUrl`；客户端 `GET /v1/subscribers/{id}/messages`。
 
-## 用户 Worker SDK
+## 用户 Delivery Worker
 
-- 包：`github.com/SolaTyolo/herald/sdk/worker`
-- 契约：`github.com/SolaTyolo/herald/pkg/contract`
-- 示例：[`sdk/worker/examples/echo`](../sdk/worker/examples/echo)
+用户自己实现并部署 HTTP 服务。Herald 只认 `pkg/contract` 里的 JSON 契约，不提供 SDK。
 
-```go
-package main
-
-import (
-	"context"
-	"github.com/SolaTyolo/herald/pkg/contract"
-	heraldworker "github.com/SolaTyolo/herald/sdk/worker"
-)
-
-type TencentSMS struct{}
-
-func (p *TencentSMS) Send(ctx context.Context, cfg contract.ProviderConfig, msg contract.Message) contract.DeliveryError {
-	return contract.OK("sms-biz-id")
-}
-
-func main() {
-	heraldworker.RegisterProvider("tencent_sms", &TencentSMS{})
-	_ = heraldworker.Run(":8080")
-}
-```
-
-端点：`POST /delivery`、`GET /health`。
+端点：`POST /delivery`（YAML `service.endpoint`）、`GET /health`（健康探测）。
 
 ### POST /delivery
 
@@ -143,7 +120,7 @@ func main() {
 | **`async`（默认）** | 请求带 `async` / `X-Herald-Async: 1`；Worker `202 Accepted`，完成后写 Redis `DeliveryResultEvent`；Herald `BRPOP` 按 `taskId` 取结果 |
 | **`sync`** | 等待 HTTP 响应体中的 `DeliveryError` |
 
-Worker 需能访问与 Herald 相同的 Redis（`REDIS_ADDR` 或 `HERALD_RESULT_REDIS`）。
+`DELIVERY_RESULT_MODE=async` 只在 `QUEUE_MODE=asynq` 下可用。用户 Worker 完成后把 `DeliveryResultEvent` JSON `LPUSH` 到同一 Redis（`REDIS_ADDR`）。
 
 | Redis key | 用途 |
 |-----------|------|

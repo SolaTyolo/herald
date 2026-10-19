@@ -24,39 +24,35 @@ const (
 	DBDriverSQLite   DBDriver = "sqlite"
 )
 
+const (
+	QueueModeLocal = "local"
+	QueueModeAsynq = "asynq"
+)
+
 type Config struct {
-	HTTPAddr      string
-	StoreType     StoreType
-	DBDriver      DBDriver
-	DatabaseURL   string
-	StoreFilePath string
-	RedisAddr     string
+	HTTPAddr        string
+	StoreType       StoreType
+	DBDriver        DBDriver
+	DatabaseURL     string
+	StoreFilePath   string
+	RedisAddr       string
 	EncryptionKey   string
 	ProvidersConfig string
-	// DeliveryResultMode: sync (HTTP body) or async (Redis result queue).
+	// QueueMode is local (in-process, no Redis) or asynq (Redis job queue, bridge, throttle, result queue).
+	QueueMode string
+	// DeliveryResultMode: sync (HTTP body) or async (Redis result queue; asynq only).
 	DeliveryResultMode string
-	// Worker ↔ API event bus (in_app message fan-out to API for webhook delivery)
-	WorkerAPIPubSub             string
-	WorkerAPIRabbitMQHTTPURL    string
-	WorkerAPIRabbitMQUser       string
-	WorkerAPIRabbitMQPass       string
-	WorkerAPIRabbitMQVHost      string
-	WorkerAPIRabbitMQExchange   string
-	WorkerAPIRabbitMQRoutingKey string
-	WorkerAPIRabbitMQStreamURL  string
-	WorkerAPIKafkaHTTPURL       string
-	WorkerAPIKafkaTopic         string
-	MaxRecipients int
-	DevMode       bool
+	MaxRecipients      int
+	DevMode            bool
 
 	// Telemetry
-	LogLevel            string
-	LogFormat           string
-	OTelEnabled         bool
-	OTelEndpoint        string
-	OTelServiceName     string
-	OTelMetricsEnabled  bool
-	OTelTracesEnabled   bool
+	LogLevel           string
+	LogFormat          string
+	OTelEnabled        bool
+	OTelEndpoint       string
+	OTelServiceName    string
+	OTelMetricsEnabled bool
+	OTelTracesEnabled  bool
 }
 
 func Load() (*Config, error) {
@@ -79,33 +75,41 @@ func Load() (*Config, error) {
 		dbURL = defaultDatabaseURL(driver)
 	}
 
+	queueMode, err := resolveQueueMode()
+	if err != nil {
+		return nil, err
+	}
+	redisAddr := ""
+	if queueMode == QueueModeAsynq {
+		redisAddr = getEnv("REDIS_ADDR", "localhost:6379")
+	}
+	resultMode := strings.ToLower(os.Getenv("DELIVERY_RESULT_MODE"))
+	if resultMode == "" {
+		if queueMode == QueueModeLocal {
+			resultMode = "sync"
+		} else {
+			resultMode = "async"
+		}
+	}
+
 	cfg := &Config{
-		HTTPAddr:          getEnv("HTTP_ADDR", ":8080"),
-		StoreType:         storeType,
-		DBDriver:          driver,
-		DatabaseURL:       dbURL,
-		StoreFilePath:     getEnv("STORE_FILE_PATH", "./data"),
-		RedisAddr:         getEnv("REDIS_ADDR", "localhost:6379"),
-		EncryptionKey:               getEnv("ENCRYPTION_KEY", defaultEncryptionKey),
-		ProvidersConfig:             getEnv("PROVIDERS_CONFIG", "./config/providers.yaml"),
-		DeliveryResultMode:          strings.ToLower(getEnv("DELIVERY_RESULT_MODE", "async")),
-		WorkerAPIPubSub:             envFallback("WORKER_API_PUBSUB", "INAPP_PUBSUB", "redis"),
-		WorkerAPIRabbitMQHTTPURL:    envFallback("WORKER_API_RABBITMQ_HTTP_URL", "INAPP_RABBITMQ_HTTP_URL", ""),
-		WorkerAPIRabbitMQUser:       envFallback("WORKER_API_RABBITMQ_USER", "INAPP_RABBITMQ_USER", "guest"),
-		WorkerAPIRabbitMQPass:       envFallback("WORKER_API_RABBITMQ_PASS", "INAPP_RABBITMQ_PASS", "guest"),
-		WorkerAPIRabbitMQVHost:      envFallback("WORKER_API_RABBITMQ_VHOST", "INAPP_RABBITMQ_VHOST", "/"),
-		WorkerAPIRabbitMQExchange:   envFallback("WORKER_API_RABBITMQ_EXCHANGE", "INAPP_RABBITMQ_EXCHANGE", "herald.worker-api"),
-		WorkerAPIRabbitMQRoutingKey: envFallback("WORKER_API_RABBITMQ_ROUTING_KEY", "INAPP_RABBITMQ_ROUTING_KEY", "events"),
-		WorkerAPIRabbitMQStreamURL:  envFallback("WORKER_API_RABBITMQ_STREAM_URL", "INAPP_RABBITMQ_STREAM_URL", ""),
-		WorkerAPIKafkaHTTPURL:       envFallback("WORKER_API_KAFKA_HTTP_URL", "INAPP_KAFKA_HTTP_URL", ""),
-		WorkerAPIKafkaTopic:         envFallback("WORKER_API_KAFKA_TOPIC", "INAPP_KAFKA_TOPIC", "herald.worker-api.events"),
-		MaxRecipients:     getEnvInt("MAX_RECIPIENTS", 100),
-		DevMode:           getEnvBool("DEV_MODE", false),
-		LogLevel:          getEnv("LOG_LEVEL", "info"),
-		LogFormat:         getEnv("LOG_FORMAT", "text"),
-		OTelEnabled:       getEnvBool("OTEL_ENABLED", false),
-		OTelEndpoint:      getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),
-		OTelServiceName:   getEnv("OTEL_SERVICE_NAME", "herald"),
+		HTTPAddr:           getEnv("HTTP_ADDR", ":8080"),
+		StoreType:          storeType,
+		DBDriver:           driver,
+		DatabaseURL:        dbURL,
+		StoreFilePath:      getEnv("STORE_FILE_PATH", "./data"),
+		RedisAddr:          redisAddr,
+		EncryptionKey:      getEnv("ENCRYPTION_KEY", defaultEncryptionKey),
+		ProvidersConfig:    getEnv("PROVIDERS_CONFIG", "./config/providers.yaml"),
+		QueueMode:          queueMode,
+		DeliveryResultMode: resultMode,
+		MaxRecipients:      getEnvInt("MAX_RECIPIENTS", 100),
+		DevMode:            getEnvBool("DEV_MODE", false),
+		LogLevel:           getEnv("LOG_LEVEL", "info"),
+		LogFormat:          getEnv("LOG_FORMAT", "text"),
+		OTelEnabled:        getEnvBool("OTEL_ENABLED", false),
+		OTelEndpoint:       getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),
+		OTelServiceName:    getEnv("OTEL_SERVICE_NAME", "herald"),
 		OTelMetricsEnabled: getEnvBool("OTEL_METRICS_ENABLED", true),
 		OTelTracesEnabled:  getEnvBool("OTEL_TRACES_ENABLED", true),
 	}
@@ -120,32 +124,35 @@ func Load() (*Config, error) {
 	default:
 		return nil, fmt.Errorf("DELIVERY_RESULT_MODE must be sync or async")
 	}
-	switch strings.ToLower(cfg.WorkerAPIPubSub) {
-	case "redis", "local", "rabbitmq-http", "kafka-http":
-	default:
-		return nil, fmt.Errorf("WORKER_API_PUBSUB must be redis, local, rabbitmq-http, or kafka-http")
-	}
-	if err := validateWorkerAPIPubSub(cfg); err != nil {
-		return nil, err
+	if cfg.QueueMode == QueueModeLocal && cfg.DeliveryResultMode == "async" {
+		return nil, fmt.Errorf("DELIVERY_RESULT_MODE=async requires QUEUE_MODE=asynq")
 	}
 	return cfg, nil
 }
 
-func validateWorkerAPIPubSub(cfg *Config) error {
-	switch strings.ToLower(cfg.WorkerAPIPubSub) {
-	case "rabbitmq-http":
-		if cfg.WorkerAPIRabbitMQHTTPURL == "" {
-			return fmt.Errorf("WORKER_API_RABBITMQ_HTTP_URL required when WORKER_API_PUBSUB=rabbitmq-http")
-		}
-		if cfg.WorkerAPIRabbitMQStreamURL == "" {
-			return fmt.Errorf("WORKER_API_RABBITMQ_STREAM_URL required when WORKER_API_PUBSUB=rabbitmq-http")
-		}
-	case "kafka-http":
-		if cfg.WorkerAPIKafkaHTTPURL == "" {
-			return fmt.Errorf("WORKER_API_KAFKA_HTTP_URL required when WORKER_API_PUBSUB=kafka-http")
+func (c *Config) UsesAsynq() bool {
+	return c != nil && c.QueueMode == QueueModeAsynq
+}
+
+func resolveQueueMode() (string, error) {
+	mode := strings.ToLower(getEnv("QUEUE_MODE", ""))
+	if mode == "" {
+		legacy := strings.ToLower(envFallback("WORKER_API_PUBSUB", "INAPP_PUBSUB", ""))
+		switch legacy {
+		case "", "redis":
+			mode = QueueModeAsynq
+		case "local":
+			mode = QueueModeLocal
+		default:
+			return "", fmt.Errorf("WORKER_API_PUBSUB %q is removed; set QUEUE_MODE=local or asynq", legacy)
 		}
 	}
-	return nil
+	switch mode {
+	case QueueModeLocal, QueueModeAsynq:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("QUEUE_MODE must be local or asynq")
+	}
 }
 
 func envFallback(primary, legacy, fallback string) string {

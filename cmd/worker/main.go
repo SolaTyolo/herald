@@ -27,6 +27,11 @@ func main() {
 	}
 	defer app.Close()
 
+	if !app.Config.UsesAsynq() {
+		slog.Error("cmd/worker only runs when QUEUE_MODE=asynq")
+		os.Exit(1)
+	}
+
 	tracer := otel.Tracer("herald-worker")
 	redisOpt := asynq.RedisClientOpt{Addr: app.Config.RedisAddr}
 	srv := asynqqueue.NewServer(redisOpt, 20)

@@ -23,7 +23,6 @@ docker-down:
 build:
 	go build -o bin/herald-api ./cmd/api
 	go build -o bin/herald-worker ./cmd/worker
-	go build -o bin/rabbit-inapp-bridge ./cmd/rabbit-inapp-bridge
 
 run-api: build
 	./bin/herald-api

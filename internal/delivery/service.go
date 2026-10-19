@@ -121,7 +121,7 @@ func (s *Service) sendViaIntegration(ctx context.Context, envID string, channel 
 		TimeoutSec: int(route.Timeout.Seconds()),
 		Raw:        raw,
 	}
-	msgPayload := buildContractMessage(sub, rendered, channel)
+	msgPayload := buildContractMessage(sub, rendered, channel, sendCtx)
 
 	var result contract.DeliveryError
 	switch route.Type {
@@ -185,7 +185,7 @@ func (s *Service) sendViaIntegration(ctx context.Context, envID string, channel 
 	return msg, nil
 }
 
-func buildContractMessage(sub *domain.Subscriber, rendered *domain.MessageTemplate, channel domain.ChannelType) contract.Message {
+func buildContractMessage(sub *domain.Subscriber, rendered *domain.MessageTemplate, channel domain.ChannelType, sendCtx *SendContext) contract.Message {
 	to := ""
 	meta := map[string]string{}
 	switch channel {
@@ -210,13 +210,39 @@ func buildContractMessage(sub *domain.Subscriber, rendered *domain.MessageTempla
 			to = v
 		}
 	}
-	return contract.Message{
+	msg := contract.Message{
 		Channel:   string(channel),
 		To:        to,
 		Content:   rendered.Content,
 		PushTitle: rendered.Title,
 		Metadata:  meta,
 	}
+	if rendered.ProviderTemplateID != "" {
+		msg.TemplateID = rendered.ProviderTemplateID
+		msg.TemplateParams = scalarTemplateParams(sendCtx)
+	}
+	return msg
+}
+
+func scalarTemplateParams(sendCtx *SendContext) map[string]string {
+	if sendCtx == nil || len(sendCtx.Payload) == 0 {
+		return nil
+	}
+	raw := map[string]any{}
+	if err := json.Unmarshal(sendCtx.Payload, &raw); err != nil {
+		return nil
+	}
+	out := map[string]string{}
+	for k, v := range raw {
+		switch v.(type) {
+		case string, float64, bool, json.Number:
+			out[k] = fmt.Sprint(v)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func BuildRenderContext(sub *domain.Subscriber, payload json.RawMessage, stepMeta map[string]any) template.RenderContext {

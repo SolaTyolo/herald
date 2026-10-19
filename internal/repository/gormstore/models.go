@@ -36,6 +36,7 @@ func allModels() []any {
 		&integrationModel{},
 		&notificationModel{}, &jobModel{},
 		&messageModel{}, &digestBucketModel{}, &executionLogModel{},
+		&notificationTemplateModel{}, &templateVersionModel{},
 	}
 }
 
@@ -102,6 +103,7 @@ type workflowStepModel struct {
 	WorkflowID string    `gorm:"size:36;not null;index;uniqueIndex:idx_step_order,priority:1"`
 	StepOrder  int       `gorm:"not null;uniqueIndex:idx_step_order,priority:2"`
 	StepType   string    `gorm:"not null"`
+	TemplateID string    `gorm:"size:36;index"`
 	Template   []byte    `gorm:"type:json"`
 	Filters    []byte    `gorm:"type:json;not null"`
 	Metadata   []byte    `gorm:"type:json;not null"`
@@ -113,7 +115,7 @@ func (workflowStepModel) TableName() string { return "workflow_steps" }
 func (m workflowStepModel) toDomain() (*domain.WorkflowStep, error) {
 	st := &domain.WorkflowStep{
 		ID: m.ID, WorkflowID: m.WorkflowID, StepOrder: m.StepOrder,
-		Type: domain.StepType(m.StepType), CreatedAt: m.CreatedAt,
+		Type: domain.StepType(m.StepType), TemplateID: m.TemplateID, CreatedAt: m.CreatedAt,
 	}
 	if len(m.Template) > 0 {
 		st.Template = &domain.MessageTemplate{}
@@ -129,9 +131,9 @@ func (m workflowStepModel) toDomain() (*domain.WorkflowStep, error) {
 }
 
 type subscriberModel struct {
-	ID              string    `gorm:"primaryKey;size:36"`
-	EnvID           string    `gorm:"size:36;not null;index;uniqueIndex:idx_subscriber_env,priority:1"`
-	SubscriberID    string    `gorm:"not null;uniqueIndex:idx_subscriber_env,priority:2"`
+	ID              string `gorm:"primaryKey;size:36"`
+	EnvID           string `gorm:"size:36;not null;index;uniqueIndex:idx_subscriber_env,priority:1"`
+	SubscriberID    string `gorm:"not null;uniqueIndex:idx_subscriber_env,priority:2"`
 	Email           string
 	Phone           string
 	FirstName       string
@@ -152,7 +154,7 @@ func subscriberModelFromDomain(sub *domain.Subscriber) subscriberModel {
 		ID: sub.ID, EnvID: sub.EnvID, SubscriberID: sub.SubscriberID,
 		Email: sub.Email, Phone: sub.Phone, FirstName: sub.FirstName, LastName: sub.LastName, Locale: sub.Locale,
 		WebhookURL: sub.WebhookURL,
-		Data: sub.Data, DeviceTokens: sub.DeviceTokens, ChatCredentials: sub.ChatCredentials,
+		Data:       sub.Data, DeviceTokens: sub.DeviceTokens, ChatCredentials: sub.ChatCredentials,
 		CreatedAt: sub.CreatedAt, UpdatedAt: sub.UpdatedAt,
 	}
 }
@@ -162,7 +164,7 @@ func (m subscriberModel) toDomain() (*domain.Subscriber, error) {
 		ID: m.ID, EnvID: m.EnvID, SubscriberID: m.SubscriberID,
 		Email: m.Email, Phone: m.Phone, FirstName: m.FirstName, LastName: m.LastName, Locale: m.Locale,
 		WebhookURL: m.WebhookURL,
-		Data: m.Data, DeviceTokens: m.DeviceTokens, ChatCredentials: m.ChatCredentials,
+		Data:       m.Data, DeviceTokens: m.DeviceTokens, ChatCredentials: m.ChatCredentials,
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}, nil
 }
@@ -182,9 +184,9 @@ func (m subscriberPreferenceModel) toDomain() domain.SubscriberPreference {
 }
 
 type topicModel struct {
-	ID        string    `gorm:"primaryKey;size:36"`
-	EnvID     string    `gorm:"size:36;not null;index;uniqueIndex:idx_topic_env,priority:1"`
-	TopicKey  string    `gorm:"not null;uniqueIndex:idx_topic_env,priority:2"`
+	ID        string `gorm:"primaryKey;size:36"`
+	EnvID     string `gorm:"size:36;not null;index;uniqueIndex:idx_topic_env,priority:1"`
+	TopicKey  string `gorm:"not null;uniqueIndex:idx_topic_env,priority:2"`
 	Name      string
 	CreatedAt time.Time `gorm:"not null"`
 }
@@ -263,19 +265,19 @@ func (m notificationModel) toDomain() (*domain.Notification, error) {
 }
 
 type jobModel struct {
-	ID             string     `gorm:"primaryKey;size:36"`
-	NotificationID string     `gorm:"size:36;not null;index"`
-	WorkflowStepID string     `gorm:"size:36;not null"`
-	StepOrder      int        `gorm:"not null;index"`
-	StepType       string     `gorm:"not null"`
-	Status         string     `gorm:"not null;default:pending"`
-	Payload        []byte     `gorm:"type:json;not null"`
+	ID             string `gorm:"primaryKey;size:36"`
+	NotificationID string `gorm:"size:36;not null;index"`
+	WorkflowStepID string `gorm:"size:36;not null"`
+	StepOrder      int    `gorm:"not null;index"`
+	StepType       string `gorm:"not null"`
+	Status         string `gorm:"not null;default:pending"`
+	Payload        []byte `gorm:"type:json;not null"`
 	Error          string
 	ScheduledAt    *time.Time
 	StartedAt      *time.Time
 	CompletedAt    *time.Time
-	CreatedAt      time.Time  `gorm:"not null"`
-	UpdatedAt      time.Time  `gorm:"not null"`
+	CreatedAt      time.Time `gorm:"not null"`
+	UpdatedAt      time.Time `gorm:"not null"`
 }
 
 func (jobModel) TableName() string { return "jobs" }
@@ -299,15 +301,15 @@ func (m jobModel) toDomain() (*domain.Job, error) {
 }
 
 type messageModel struct {
-	ID           string    `gorm:"primaryKey;size:36"`
-	EnvID        string    `gorm:"size:36;not null;index;index:idx_messages_env_job,priority:1"`
-	JobID        *string   `gorm:"size:36;index:idx_messages_env_job,priority:2"`
-	SubscriberPK string    `gorm:"size:36;not null;index"`
-	Channel      string    `gorm:"not null"`
+	ID           string  `gorm:"primaryKey;size:36"`
+	EnvID        string  `gorm:"size:36;not null;index;index:idx_messages_env_job,priority:1"`
+	JobID        *string `gorm:"size:36;index:idx_messages_env_job,priority:2"`
+	SubscriberPK string  `gorm:"size:36;not null;index"`
+	Channel      string  `gorm:"not null"`
 	Subject      string
 	Title        string
-	Content      string    `gorm:"not null"`
-	Metadata     []byte    `gorm:"type:json;not null"`
+	Content      string `gorm:"not null"`
+	Metadata     []byte `gorm:"type:json;not null"`
 	ProviderRef  string
 	Read         bool      `gorm:"not null;default:false"`
 	Archived     bool      `gorm:"not null;default:false"`
@@ -365,11 +367,11 @@ func (m digestBucketModel) toDomain() (*domain.DigestBucket, error) {
 }
 
 type executionLogModel struct {
-	ID             string    `gorm:"primaryKey;size:36"`
-	EnvID          string    `gorm:"size:36;not null;index"`
-	TransactionID  string    `gorm:"not null;index"`
-	NotificationID *string   `gorm:"size:36"`
-	JobID          *string   `gorm:"size:36"`
+	ID             string  `gorm:"primaryKey;size:36"`
+	EnvID          string  `gorm:"size:36;not null;index"`
+	TransactionID  string  `gorm:"not null;index"`
+	NotificationID *string `gorm:"size:36"`
+	JobID          *string `gorm:"size:36"`
 	StepType       string
 	Level          string    `gorm:"not null;default:info"`
 	Message        string    `gorm:"not null"`
@@ -384,6 +386,63 @@ func executionLogModelFromDomain(l *domain.ExecutionLog) *executionLogModel {
 		ID: l.ID, EnvID: l.EnvID, TransactionID: l.TransactionID, NotificationID: l.NotificationID,
 		JobID: l.JobID, StepType: l.StepType, Level: l.Level, Message: l.Message,
 		Metadata: l.Metadata, CreatedAt: l.CreatedAt,
+	}
+}
+
+type notificationTemplateModel struct {
+	ID         string    `gorm:"primaryKey;size:36"`
+	EnvID      string    `gorm:"size:36;not null;index"`
+	Name       string    `gorm:"not null"`
+	Generation string    `gorm:"not null"`
+	CreatedAt  time.Time `gorm:"not null"`
+	UpdatedAt  time.Time `gorm:"not null;index"`
+}
+
+func (notificationTemplateModel) TableName() string { return "notification_templates" }
+
+func (m notificationTemplateModel) toDomain() *domain.NotificationTemplate {
+	return &domain.NotificationTemplate{
+		ID: m.ID, EnvID: m.EnvID, Name: m.Name, Generation: m.Generation,
+		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
+	}
+}
+
+type templateVersionModel struct {
+	ID                 string `gorm:"primaryKey;size:36"`
+	TemplateID         string `gorm:"size:36;not null;index"`
+	Name               string `gorm:"not null"`
+	Active             bool   `gorm:"not null;default:false;index"`
+	Subject            string
+	HTMLContent        string
+	PlainContent       string
+	Editor             string
+	ProviderTemplateID string
+	TestData           []byte    `gorm:"type:json;not null"`
+	CreatedAt          time.Time `gorm:"not null"`
+	UpdatedAt          time.Time `gorm:"not null"`
+}
+
+func (templateVersionModel) TableName() string { return "template_versions" }
+
+func versionModelFromDomain(v *domain.TemplateVersion) *templateVersionModel {
+	data := v.TestData
+	if len(data) == 0 {
+		data = []byte("{}")
+	}
+	return &templateVersionModel{
+		ID: v.ID, TemplateID: v.TemplateID, Name: v.Name, Active: v.Active,
+		Subject: v.Subject, HTMLContent: v.HTMLContent, PlainContent: v.PlainContent,
+		Editor: v.Editor, ProviderTemplateID: v.ProviderTemplateID, TestData: data,
+		CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt,
+	}
+}
+
+func (m templateVersionModel) toDomain() *domain.TemplateVersion {
+	return &domain.TemplateVersion{
+		ID: m.ID, TemplateID: m.TemplateID, Name: m.Name, Active: m.Active,
+		Subject: m.Subject, HTMLContent: m.HTMLContent, PlainContent: m.PlainContent,
+		Editor: m.Editor, ProviderTemplateID: m.ProviderTemplateID, TestData: m.TestData,
+		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
 

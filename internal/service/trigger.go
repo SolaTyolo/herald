@@ -14,11 +14,11 @@ import (
 
 type TriggerService struct {
 	store         repository.Store
-	queue         *asynqqueue.Client
+	queue         asynqqueue.Enqueuer
 	maxRecipients int
 }
 
-func NewTriggerService(store repository.Store, queue *asynqqueue.Client, maxRecipients int) *TriggerService {
+func NewTriggerService(store repository.Store, queue asynqqueue.Enqueuer, maxRecipients int) *TriggerService {
 	return &TriggerService{store: store, queue: queue, maxRecipients: maxRecipients}
 }
 
