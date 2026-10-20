@@ -77,6 +77,8 @@ curl -X POST http://localhost:8080/v1/events/trigger \
 | `DB_DRIVER` | `postgres` | `postgres`, `mysql`, `sqlite` |
 | `QUEUE_MODE` | `asynq` | `local` (no Redis) or `asynq` |
 | `REDIS_ADDR` | `localhost:6379` | Only when `QUEUE_MODE=asynq` |
+| `REDIS_PASSWORD` | (empty) | Optional Redis AUTH |
+| `REDIS_DB` | `0` | Optional Redis DB index |
 | `SMTP_HOST` / `SMTP_FROM` | — | Builtin email credentials |
 | `DEV_MODE` | `false` | Local dev defaults |
 | `HTTP_ADDR` | `:8080` | API listen address |

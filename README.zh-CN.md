@@ -113,6 +113,8 @@ pkg/contract/          投递契约（用户 Worker 按此实现）
 | `DELIVERY_RESULT_MODE` | `async` | `async` / `sync` |
 | `QUEUE_MODE` | `asynq` | `local` 或 `asynq` |
 | `REDIS_ADDR` | `localhost:6379` | 仅 `asynq` 需要 |
+| `REDIS_PASSWORD` | （空） | 可选 Redis AUTH |
+| `REDIS_DB` | `0` | 可选 Redis 逻辑库 |
 | `STORE_TYPE` | `db` | `file` 或 `db` |
 
 完整列表见 [.env.example](.env.example) 与 [ARCHITECTURE §9](docs/ARCHITECTURE.md#9-环境变量)。

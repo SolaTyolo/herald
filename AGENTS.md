@@ -56,6 +56,8 @@ make docker-up
 | `DELIVERY_RESULT_MODE` | `async` | Redis result queue / `sync` HTTP body |
 | `QUEUE_MODE` | `asynq` | `local` or `asynq` |
 | `REDIS_ADDR` | `localhost:6379` | required only for `asynq` |
+| `REDIS_PASSWORD` | (empty) | optional Redis AUTH |
+| `REDIS_DB` | `0` | optional Redis DB index |
 | `STORE_TYPE` | `db` | `file` or `db` |
 | `DEV_MODE` | `false` | local dev |
 

@@ -220,6 +220,8 @@ make docker-app
 | `STORE_FILE_PATH` | `./data` | file 模式目录 |
 | `QUEUE_MODE` | `asynq` | `local`（无 Redis）或 `asynq` |
 | `REDIS_ADDR` | `localhost:6379` | 仅 `QUEUE_MODE=asynq`：任务队列、bridge、结果队列 |
+| `REDIS_PASSWORD` | （空） | 可选；Redis `AUTH` / `requirepass` |
+| `REDIS_DB` | `0` | 可选；Redis 逻辑库 |
 | `DEV_MODE` | `false` | 本地开发 |
 | `PROVIDERS_CONFIG` | `./config/providers.yaml` | YAML 路由 |
 | `SMTP_HOST` | — | 内置 `smtp_email`；发信必填 |

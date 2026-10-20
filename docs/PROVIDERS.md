@@ -152,7 +152,7 @@ API 与 Worker 需配置相同值。
 | **`async`（默认）** | 请求带 `async` / `X-Herald-Async: 1`；Worker `202 Accepted`，完成后写 Redis `DeliveryResultEvent`；Herald `BRPOP` 按 `taskId` 取结果 |
 | **`sync`** | 等待 HTTP 响应体中的 `DeliveryError` |
 
-`DELIVERY_RESULT_MODE=async` 只在 `QUEUE_MODE=asynq` 下可用。用户 Worker 完成后把 `DeliveryResultEvent` JSON `LPUSH` 到同一 Redis（`REDIS_ADDR`）。
+`DELIVERY_RESULT_MODE=async` 只在 `QUEUE_MODE=asynq` 下可用。用户 Worker 完成后把 `DeliveryResultEvent` JSON `LPUSH` 到同一 Redis（`REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`）。
 
 | Redis key | 用途 |
 |-----------|------|

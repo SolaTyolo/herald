@@ -16,7 +16,6 @@ import (
 	"github.com/SolaTyolo/herald/internal/transport/http/handler"
 	"github.com/SolaTyolo/herald/internal/workflow"
 
-	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -89,8 +88,8 @@ func New(ctx context.Context, role Role) (*App, error) {
 	var redisClient *redis.Client
 	var queueClient asynqqueue.Enqueuer
 	if cfg.UsesAsynq() {
-		redisClient = redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
-		queueClient = asynqqueue.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisAddr})
+		redisClient = redis.NewClient(cfg.RedisOptions())
+		queueClient = asynqqueue.NewClient(cfg.AsynqRedisOpt())
 	} else {
 		queueClient = asynqqueue.NewLocal()
 	}

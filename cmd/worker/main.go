@@ -33,8 +33,7 @@ func main() {
 	}
 
 	tracer := otel.Tracer("herald-worker")
-	redisOpt := asynq.RedisClientOpt{Addr: app.Config.RedisAddr}
-	srv := asynqqueue.NewServer(redisOpt, 20)
+	srv := asynqqueue.NewServer(app.Config.AsynqRedisOpt(), 20)
 
 	srv.Handle(asynqqueue.TypeProcessJob, func(ctx context.Context, task *asynq.Task) error {
 		ctx, span := tracer.Start(ctx, "asynq.process_job")

@@ -5,6 +5,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 )
 
 type StoreType string
@@ -35,6 +38,8 @@ type Config struct {
 	DatabaseURL     string
 	StoreFilePath   string
 	RedisAddr       string
+	RedisPassword   string
+	RedisDB         int
 	ProvidersConfig string
 	// QueueMode is local (in-process, no Redis) or asynq (Redis job queue, bridge, throttle, result queue).
 	QueueMode string
@@ -85,8 +90,15 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	redisAddr := ""
+	redisPassword := ""
+	redisDB := 0
 	if queueMode == QueueModeAsynq {
 		redisAddr = getEnv("REDIS_ADDR", "localhost:6379")
+		redisPassword = os.Getenv("REDIS_PASSWORD")
+		redisDB = getEnvInt("REDIS_DB", 0)
+		if redisDB < 0 {
+			return nil, fmt.Errorf("REDIS_DB must be >= 0")
+		}
 	}
 	resultMode := strings.ToLower(os.Getenv("DELIVERY_RESULT_MODE"))
 	if resultMode == "" {
@@ -110,6 +122,8 @@ func Load() (*Config, error) {
 		DatabaseURL:        dbURL,
 		StoreFilePath:      getEnv("STORE_FILE_PATH", "./data"),
 		RedisAddr:          redisAddr,
+		RedisPassword:      redisPassword,
+		RedisDB:            redisDB,
 		ProvidersConfig:    getEnv("PROVIDERS_CONFIG", "./config/providers.yaml"),
 		QueueMode:          queueMode,
 		DeliveryResultMode: resultMode,
@@ -141,6 +155,30 @@ func Load() (*Config, error) {
 
 func (c *Config) UsesAsynq() bool {
 	return c != nil && c.QueueMode == QueueModeAsynq
+}
+
+// RedisOptions builds go-redis options from REDIS_ADDR / REDIS_PASSWORD / REDIS_DB.
+func (c *Config) RedisOptions() *redis.Options {
+	if c == nil {
+		return &redis.Options{}
+	}
+	return &redis.Options{
+		Addr:     c.RedisAddr,
+		Password: c.RedisPassword,
+		DB:       c.RedisDB,
+	}
+}
+
+// AsynqRedisOpt builds asynq Redis options from the same Redis settings.
+func (c *Config) AsynqRedisOpt() asynq.RedisClientOpt {
+	if c == nil {
+		return asynq.RedisClientOpt{}
+	}
+	return asynq.RedisClientOpt{
+		Addr:     c.RedisAddr,
+		Password: c.RedisPassword,
+		DB:       c.RedisDB,
+	}
 }
 
 func resolveQueueMode() (string, error) {

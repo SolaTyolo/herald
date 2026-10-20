@@ -71,3 +71,55 @@ func TestLoadRequiresAPIKey(t *testing.T) {
 		t.Fatal("expected error when API_KEY is missing")
 	}
 }
+
+func TestLoadRedisAuth(t *testing.T) {
+	os.Setenv("API_KEY", "test-key")
+	os.Setenv("QUEUE_MODE", "asynq")
+	os.Setenv("REDIS_ADDR", "redis:6379")
+	os.Setenv("REDIS_PASSWORD", "s3cret")
+	os.Setenv("REDIS_DB", "2")
+	defer func() {
+		os.Unsetenv("API_KEY")
+		os.Unsetenv("QUEUE_MODE")
+		os.Unsetenv("REDIS_ADDR")
+		os.Unsetenv("REDIS_PASSWORD")
+		os.Unsetenv("REDIS_DB")
+	}()
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RedisAddr != "redis:6379" || cfg.RedisPassword != "s3cret" || cfg.RedisDB != 2 {
+		t.Fatalf("redis auth env not loaded: addr=%q password=%q db=%d", cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+	}
+	opt := cfg.RedisOptions()
+	if opt.Addr != "redis:6379" || opt.Password != "s3cret" || opt.DB != 2 {
+		t.Fatalf("RedisOptions mismatch: %+v", opt)
+	}
+	asynqOpt := cfg.AsynqRedisOpt()
+	if asynqOpt.Addr != "redis:6379" || asynqOpt.Password != "s3cret" || asynqOpt.DB != 2 {
+		t.Fatalf("AsynqRedisOpt mismatch: %+v", asynqOpt)
+	}
+}
+
+func TestLoadRedisAuthIgnoredWhenLocal(t *testing.T) {
+	os.Setenv("API_KEY", "test-key")
+	os.Setenv("QUEUE_MODE", "local")
+	os.Setenv("REDIS_PASSWORD", "should-ignore")
+	os.Setenv("REDIS_DB", "5")
+	defer func() {
+		os.Unsetenv("API_KEY")
+		os.Unsetenv("QUEUE_MODE")
+		os.Unsetenv("REDIS_PASSWORD")
+		os.Unsetenv("REDIS_DB")
+	}()
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RedisAddr != "" || cfg.RedisPassword != "" || cfg.RedisDB != 0 {
+		t.Fatalf("expected empty redis settings in local mode: %+v", cfg)
+	}
+}
