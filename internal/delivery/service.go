@@ -57,24 +57,43 @@ func (s *Service) SendChannel(ctx context.Context, channel domain.ChannelType, s
 		return s.sendInApp(ctx, sub, rendered, jobID)
 	}
 
-	providers := s.routes.ProvidersForChannel(string(channel))
-	if len(providers) == 0 {
-		return nil, fmt.Errorf("no provider for channel %s", channel)
+	pin := ""
+	if sendCtx != nil {
+		pin = sendCtx.ProviderName
 	}
+	route, err := s.resolveProvider(channel, pin)
+	if err != nil {
+		return nil, err
+	}
+	return s.sendViaRoute(ctx, channel, route, sub, rendered, jobID, sendCtx)
+}
 
-	var lastErr error
-	for _, route := range providers {
-		msg, err := s.sendViaRoute(ctx, channel, route, sub, rendered, jobID, sendCtx)
-		if err == nil {
-			return msg, nil
+// resolveProvider picks exactly one YAML provider. No same-channel failover:
+// pin via WorkflowStep.provider, or use the sole provider registered for the channel.
+func (s *Service) resolveProvider(channel domain.ChannelType, providerName string) (routing.Provider, error) {
+	if providerName != "" {
+		route, ok := s.routes.Lookup(providerName)
+		if !ok {
+			return routing.Provider{}, fmt.Errorf("provider %q not found in PROVIDERS_CONFIG", providerName)
 		}
-		// Retryable failures must surface to Asynq — do not failover to another provider.
-		if IsRetryable(err) {
-			return nil, err
+		if route.Channel != string(channel) {
+			return routing.Provider{}, fmt.Errorf("provider %q is channel %q, step expects %q", providerName, route.Channel, channel)
 		}
-		lastErr = err
+		return route, nil
 	}
-	return nil, lastErr
+	providers := s.routes.ProvidersForChannel(string(channel))
+	switch len(providers) {
+	case 0:
+		return routing.Provider{}, fmt.Errorf("no provider for channel %s", channel)
+	case 1:
+		return providers[0], nil
+	default:
+		names := make([]string, len(providers))
+		for i, p := range providers {
+			names[i] = p.Name
+		}
+		return routing.Provider{}, fmt.Errorf("multiple providers for channel %s (%s); set step.provider", channel, strings.Join(names, ", "))
+	}
 }
 
 func (s *Service) sendInApp(ctx context.Context, sub *domain.Subscriber, rendered *domain.MessageTemplate, jobID *string) (*domain.Message, error) {

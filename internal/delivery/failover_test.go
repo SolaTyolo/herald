@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestRetryableStopsFailoverSemantics(t *testing.T) {
+func TestRetryableClassification(t *testing.T) {
 	t.Parallel()
-	// SendChannel returns immediately on RetryableError so Asynq retries the same
-	// provider instead of failing over to another YAML provider for the channel.
+	// Retryable errors surface to Asynq for the same (pinned) provider — there is
+	// no same-channel provider failover loop anymore.
 	err := &RetryableError{Code: "net", Message: "timeout"}
 	if !IsRetryable(err) {
 		t.Fatal("expected retryable")

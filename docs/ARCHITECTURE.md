@@ -98,11 +98,13 @@ flowchart TB
 ```
 delivery.SendChannel
   ├─ inapp   → CreateMessage + bridge.Publisher
-  └─ 其他 channel → routing.ProvidersForChannel
+  └─ 其他 channel → resolveProvider（step.provider 或该 channel 唯一 provider）
        ├─ builtin smtp_email → 本地 SMTP（SMTP_* 环境变量）
        └─ remote → POST service.endpoint（密钥由用户 Worker 自行保管）
             └─ async：Worker 202 + Redis 结果队列；sync：HTTP 响应体
 ```
+
+同 channel 可注册多个 remote（如 `lark_webhook` / `wecom_webhook` 都是 `chat`）。在 workflow 步骤上用 `provider` 点名，可配两个独立 `chat` step；**不做**同 channel failover。
 
 ### 动态模板
 
@@ -132,7 +134,7 @@ inapp 步骤 → Worker 写 messages → bridge.Publisher
 |------|------|
 | 重试 | 仅 `DeliveryError.retryable=true` 触发 Asynq 重试；否则 `SkipRetry` |
 | 幂等 | 发前 `GetMessageByJobID`；已有 message 则跳过 |
-| Failover | `Retryable` 不上探同 channel 的其他 provider |
+| Provider 选型 | `step.provider` 钉死 YAML provider；同 channel 多 provider 时必填；无 failover |
 | 健康探测 | YAML `healthCheck` 周期探测；不健康则 remote 可重试失败 |
 | Topic | 触发入队 `workflow:topic_fanout`，响应 `async: true` |
 

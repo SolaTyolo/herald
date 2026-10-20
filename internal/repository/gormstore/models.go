@@ -67,6 +67,7 @@ type workflowStepModel struct {
 	WorkflowID string    `gorm:"size:36;not null;index;uniqueIndex:idx_step_order,priority:1"`
 	StepOrder  int       `gorm:"not null;uniqueIndex:idx_step_order,priority:2"`
 	StepType   string    `gorm:"not null"`
+	Provider   string    `gorm:"size:128"`
 	TemplateID string    `gorm:"size:36;index"`
 	Template   []byte    `gorm:"type:json"`
 	Filters    []byte    `gorm:"type:json;not null"`
@@ -79,7 +80,8 @@ func (workflowStepModel) TableName() string { return "workflow_steps" }
 func (m workflowStepModel) toDomain() (*domain.WorkflowStep, error) {
 	st := &domain.WorkflowStep{
 		ID: m.ID, WorkflowID: m.WorkflowID, StepOrder: m.StepOrder,
-		Type: domain.StepType(m.StepType), TemplateID: m.TemplateID, CreatedAt: m.CreatedAt,
+		Type: domain.StepType(m.StepType), Provider: m.Provider,
+		TemplateID: m.TemplateID, CreatedAt: m.CreatedAt,
 	}
 	if len(m.Template) > 0 {
 		st.Template = &domain.MessageTemplate{}

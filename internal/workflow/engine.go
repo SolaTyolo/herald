@@ -265,6 +265,7 @@ func (e *Engine) flushDigestByJob(ctx context.Context, jobID string) error {
 		WorkflowID:     jc.Workflow.ID,
 		NotificationID: jc.Notification.ID,
 		Payload:        jc.Notification.Payload,
+		ProviderName:   nextStep.Provider,
 	}
 	_, err = e.delivery.SendChannel(ctx, nextStep.Type.Channel(), jc.Subscriber, rendered, &jid, sendCtx)
 	if err != nil {
@@ -392,6 +393,7 @@ func (e *Engine) execChannel(ctx context.Context, jc *JobContext, job *domain.Jo
 		WorkflowID:     jc.Workflow.ID,
 		NotificationID: jc.Notification.ID,
 		Payload:        jc.Notification.Payload,
+		ProviderName:   jc.Step.Provider,
 	}
 	_, err = e.delivery.SendChannel(ctx, jc.Step.Type.Channel(), jc.Subscriber, rendered, &jid, sendCtx)
 	return err

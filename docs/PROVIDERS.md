@@ -41,6 +41,38 @@ providers:
     service: user-sms-worker
     channel: sms
     timeout: 10s
+  lark_webhook:
+    type: remote
+    service: user-sms-worker
+    channel: chat
+    timeout: 10s
+  wecom_webhook:
+    type: remote
+    service: user-sms-worker
+    channel: chat
+    timeout: 10s
+```
+
+Workflow 里用 `provider` 点名（同 channel 可配多个独立 step）：
+
+```json
+{
+  "name": "ops-alert",
+  "triggerId": "ops-alert",
+  "active": true,
+  "steps": [
+    {
+      "type": "chat",
+      "provider": "wecom_webhook",
+      "template": { "content": "告警：{{.title}}" }
+    },
+    {
+      "type": "chat",
+      "provider": "lark_webhook",
+      "template": { "content": "告警：{{.title}}" }
+    }
+  ]
+}
 ```
 
 ### 校验
@@ -49,7 +81,11 @@ providers:
 - `builtin` 禁止 `service`；名称仅 `smtp_email` / `inapp`
 - `remote` 必须引用已存在的 `service`
 - `service.endpoint` 为合法 `http` / `https` URL
-- Workflow 按 **channel** 编排；投递时 `ProvidersForChannel` → 按名称排序尝试
+- Workflow 按 **channel** 编排；投递时：
+  - 步骤设置了 `provider` → 只用该 YAML providerName（须与步骤 channel 一致）
+  - 未设置且该 channel 仅有一个 provider → 自动选用
+  - 未设置且同 channel 有多个 provider → 报错（需在步骤上写明 `provider`）
+  - **无**同 channel provider failover
 
 ## 凭据
 

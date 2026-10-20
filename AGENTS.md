@@ -22,7 +22,7 @@
 3. **Use `repository.IsNotFound(err)`** — No driver-specific not-found checks.
 4. **Role split** — `QUEUE_MODE=asynq`: API migrations + bridge subscriber; Worker runs Asynq. Same `PROVIDERS_CONFIG` and `REDIS_ADDR`. `local`: one process, no Redis.
 5. **In-app** — Core built-in; Worker persists + bridge publish; REST poll; optional `webhookUrl` on API.
-6. **Channel → provider** — Delivery picks YAML providers by channel (`ProvidersForChannel`). Builtin SMTP credentials come from `SMTP_*` env, not the database.
+6. **Channel → provider** — Delivery resolves one YAML provider: `WorkflowStep.provider` when set, else the sole provider for that channel (error if multiple). No same-channel failover. Builtin SMTP credentials come from `SMTP_*` env, not the database.
 7. **Remote workers** live in the user's process. Herald posts `pkg/contract.DeliveryRequest` to `POST /delivery`. Core must not import user provider implementations. Remote secrets stay in the worker.
 8. **Minimal diffs** — Match surrounding code; no drive-by refactors.
 
