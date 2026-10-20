@@ -1,4 +1,5 @@
-FROM public.ecr.aws/docker/library/golang:1.25-alpine AS build
+# mirror.gcr.io avoids Docker Hub / public.ecr.aws anonymous rate & data limits on shared CI IPs.
+FROM golang:1.25-alpine AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -7,7 +8,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/herald-api ./cmd/api \
 	&& CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/herald-worker ./cmd/worker
 
-FROM public.ecr.aws/docker/library/alpine:3.21
+FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates wget
 WORKDIR /app
