@@ -5,7 +5,6 @@ import (
 	"log/slog"
 
 	"github.com/SolaTyolo/herald/internal/config"
-	"github.com/SolaTyolo/herald/internal/crypto"
 	"github.com/SolaTyolo/herald/internal/delivery"
 	"github.com/SolaTyolo/herald/internal/delivery/resultqueue"
 	asynqqueue "github.com/SolaTyolo/herald/internal/queue/asynq"
@@ -55,7 +54,6 @@ type App struct {
 	Engine    *workflow.Engine
 	Trigger   *service.TriggerService
 	Handler   *handler.API
-	Encryptor *crypto.Encryptor
 	Shutdown  func(context.Context) error
 	stopWatch func()
 }
@@ -97,12 +95,6 @@ func New(ctx context.Context, role Role) (*App, error) {
 		if cfg.DevMode {
 			slog.Warn("DEV_MODE: default API key", "key", apiKey)
 		}
-	}
-
-	enc, err := crypto.NewEncryptor(cfg.EncryptionKey)
-	if err != nil {
-		store.Close()
-		return nil, err
 	}
 
 	var redisClient *redis.Client
@@ -148,9 +140,16 @@ func New(ctx context.Context, role Role) (*App, error) {
 	if asyncResults {
 		results = resultqueue.New(redisClient)
 	}
-	deliverySvc := delivery.New(store, enc, routes, eventPub, delivery.Options{
+	deliverySvc := delivery.New(store, routes, eventPub, delivery.Options{
 		AsyncResults: asyncResults,
 		Results:      results,
+		SMTP: delivery.SMTPConfig{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			From:     cfg.SMTPFrom,
+			Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword,
+		},
 	})
 	engine := workflow.NewEngine(store, queueClient, deliverySvc, redisClient)
 	triggerSvc := service.NewTriggerService(store, queueClient, cfg.MaxRecipients)
@@ -161,14 +160,13 @@ func New(ctx context.Context, role Role) (*App, error) {
 	app := &App{
 		Config: cfg, Store: store, Redis: redisClient, Queue: queueClient,
 		BridgeSub: bridgeSub, Routes: routes, Engine: engine, Trigger: triggerSvc,
-		Encryptor: enc, Shutdown: shutdown, stopWatch: stopWatch,
+		Shutdown: shutdown, stopWatch: stopWatch,
 	}
 
 	if role == RoleAPI {
 		subscriberSvc := service.NewSubscriberService(store)
 		workflowSvc := service.NewWorkflowService(store)
 		topicSvc := service.NewTopicService(store)
-		integrationSvc := service.NewIntegrationService(store, enc, routes)
 		notificationSvc := service.NewNotificationQueryService(store)
 		messageSvc := service.NewMessageService(store)
 		templateSvc := service.NewTemplateService(store)
@@ -176,7 +174,7 @@ func New(ctx context.Context, role Role) (*App, error) {
 		app.Handler = handler.NewAPI(
 			cfg,
 			triggerSvc, subscriberSvc, workflowSvc, topicSvc,
-			integrationSvc, notificationSvc, messageSvc, templateSvc,
+			notificationSvc, messageSvc, templateSvc,
 			store, redisClient, routes,
 		)
 	}

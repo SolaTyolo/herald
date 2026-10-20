@@ -13,6 +13,44 @@ import (
 	"github.com/SolaTyolo/herald/pkg/contract"
 )
 
+// SMTPConfig is builtin smtp_email settings from environment variables.
+type SMTPConfig struct {
+	Host     string
+	Port     string
+	From     string
+	Username string
+	Password string
+}
+
+func (c SMTPConfig) Validate() error {
+	if strings.TrimSpace(c.Host) == "" {
+		return fmt.Errorf("SMTP_HOST required for smtp_email")
+	}
+	if strings.TrimSpace(c.From) == "" {
+		return fmt.Errorf("SMTP_FROM required for smtp_email")
+	}
+	if c.Port != "" {
+		if _, err := strconv.Atoi(c.Port); err != nil {
+			return fmt.Errorf("SMTP_PORT must be an integer")
+		}
+	}
+	return nil
+}
+
+func (c SMTPConfig) Raw() map[string]string {
+	port := c.Port
+	if port == "" {
+		port = "587"
+	}
+	return map[string]string{
+		"host":     c.Host,
+		"port":     port,
+		"from":     c.From,
+		"username": c.Username,
+		"password": c.Password,
+	}
+}
+
 // SMTPSender sends email via SMTP. Override in tests.
 type SMTPSender func(ctx context.Context, cfg contract.ProviderConfig, msg contract.Message) contract.DeliveryError
 
@@ -111,38 +149,16 @@ func defaultSMTPSender(ctx context.Context, cfg contract.ProviderConfig, msg con
 
 func buildMIME(from, to, subject, content string) []byte {
 	var b strings.Builder
-	b.WriteString("From: " + from + "\r\n")
-	b.WriteString("To: " + to + "\r\n")
-	b.WriteString("Subject: " + subject + "\r\n")
+	b.WriteString("From: ")
+	b.WriteString(from)
+	b.WriteString("\r\nTo: ")
+	b.WriteString(to)
+	b.WriteString("\r\nSubject: ")
+	b.WriteString(subject)
+	b.WriteString("\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
 	b.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
 	b.WriteString("\r\n")
 	b.WriteString(content)
 	return []byte(b.String())
-}
-
-// ValidateSMTPCredentials checks required fields for builtin smtp_email integrations.
-func ValidateSMTPCredentials(raw map[string]any) error {
-	host, _ := raw["host"].(string)
-	from, _ := raw["from"].(string)
-	if strings.TrimSpace(host) == "" {
-		return fmt.Errorf("credentials.host required for smtp_email")
-	}
-	if strings.TrimSpace(from) == "" {
-		return fmt.Errorf("credentials.from required for smtp_email")
-	}
-	if port, ok := raw["port"]; ok {
-		switch v := port.(type) {
-		case string:
-			if _, err := strconv.Atoi(v); err != nil {
-				return fmt.Errorf("credentials.port must be an integer")
-			}
-		case float64:
-			// JSON numbers
-		case int:
-		default:
-			return fmt.Errorf("credentials.port must be an integer")
-		}
-	}
-	return nil
 }

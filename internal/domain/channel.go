@@ -3,7 +3,7 @@ package domain
 type ChannelType string
 
 const (
-	ChannelInApp ChannelType = "in_app"
+	ChannelInApp ChannelType = "inapp"
 	ChannelEmail ChannelType = "email"
 	ChannelSMS   ChannelType = "sms"
 	ChannelPush  ChannelType = "push"
@@ -13,7 +13,7 @@ const (
 type StepType string
 
 const (
-	StepInApp    StepType = "in_app"
+	StepInApp    StepType = "inapp"
 	StepEmail    StepType = "email"
 	StepSMS      StepType = "sms"
 	StepPush     StepType = "push"

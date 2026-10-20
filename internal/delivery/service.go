@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/SolaTyolo/herald/internal/crypto"
 	"github.com/SolaTyolo/herald/internal/delivery/resultqueue"
 	"github.com/SolaTyolo/herald/internal/domain"
 	"github.com/SolaTyolo/herald/internal/realtime/bridge"
@@ -17,28 +16,29 @@ import (
 )
 
 type Service struct {
-	store     repository.Store
-	encryptor *crypto.Encryptor
-	routes    *routing.Table
-	events    bridge.Publisher
-	remote    *remoteClient
-	smtpSend  SMTPSender
+	store    repository.Store
+	routes   *routing.Table
+	events   bridge.Publisher
+	remote   *remoteClient
+	smtpSend SMTPSender
+	smtp     SMTPConfig
 }
 
 // Options configures delivery.Service.
 type Options struct {
 	AsyncResults bool
 	Results      *resultqueue.Queue
+	SMTP         SMTPConfig
 }
 
-func New(store repository.Store, encryptor *crypto.Encryptor, routes *routing.Table, events bridge.Publisher, opts Options) *Service {
+func New(store repository.Store, routes *routing.Table, events bridge.Publisher, opts Options) *Service {
 	return &Service{
-		store:     store,
-		encryptor: encryptor,
-		routes:    routes,
-		events:    events,
-		remote:    newRemoteClient(opts.AsyncResults, opts.Results),
-		smtpSend:  defaultSMTPSender,
+		store:    store,
+		routes:   routes,
+		events:   events,
+		remote:   newRemoteClient(opts.AsyncResults, opts.Results),
+		smtpSend: defaultSMTPSender,
+		smtp:     opts.SMTP,
 	}
 }
 
@@ -57,22 +57,18 @@ func (s *Service) SendChannel(ctx context.Context, envID string, channel domain.
 		return s.sendInApp(ctx, envID, sub, rendered, jobID)
 	}
 
-	primaryOnly := channel == domain.ChannelEmail || channel == domain.ChannelSMS
-	integrations, err := s.store.ListActiveIntegrations(ctx, envID, channel, primaryOnly)
-	if err != nil {
-		return nil, err
-	}
-	if len(integrations) == 0 {
-		return nil, fmt.Errorf("no active integration for channel %s", channel)
+	providers := s.routes.ProvidersForChannel(string(channel))
+	if len(providers) == 0 {
+		return nil, fmt.Errorf("no provider for channel %s", channel)
 	}
 
 	var lastErr error
-	for _, integration := range integrations {
-		msg, err := s.sendViaIntegration(ctx, envID, channel, &integration, sub, rendered, jobID, sendCtx)
+	for _, route := range providers {
+		msg, err := s.sendViaRoute(ctx, envID, channel, route, sub, rendered, jobID, sendCtx)
 		if err == nil {
 			return msg, nil
 		}
-		// Retryable failures must surface to Asynq — do not failover to another integration.
+		// Retryable failures must surface to Asynq — do not failover to another provider.
 		if IsRetryable(err) {
 			return nil, err
 		}
@@ -102,24 +98,14 @@ func (s *Service) sendInApp(ctx context.Context, envID string, sub *domain.Subsc
 	return msg, nil
 }
 
-func (s *Service) sendViaIntegration(ctx context.Context, envID string, channel domain.ChannelType, integration *domain.Integration, sub *domain.Subscriber, rendered *domain.MessageTemplate, jobID *string, sendCtx *SendContext) (*domain.Message, error) {
-	route, ok := s.routes.Lookup(integration.ProviderID)
-	if !ok {
-		return nil, fmt.Errorf("provider not in routing table: %s", integration.ProviderID)
-	}
-
+func (s *Service) sendViaRoute(ctx context.Context, envID string, channel domain.ChannelType, route routing.Provider, sub *domain.Subscriber, rendered *domain.MessageTemplate, jobID *string, sendCtx *SendContext) (*domain.Message, error) {
 	if route.Type == routing.TypeRemote && route.Service != "" && !s.routes.IsServiceHealthy(route.Service) {
 		return nil, &RetryableError{Code: "service_unhealthy", Message: fmt.Sprintf("service %s is unhealthy", route.Service)}
 	}
 
-	creds := map[string]any{}
-	if err := s.encryptor.DecryptJSON(integration.CredentialsEncrypted, &creds); err != nil {
-		return nil, err
-	}
-	raw := credentialsToRaw(creds)
 	cfg := contract.ProviderConfig{
 		TimeoutSec: int(route.Timeout.Seconds()),
-		Raw:        raw,
+		Raw:        map[string]string{},
 	}
 	msgPayload := buildContractMessage(sub, rendered, channel, sendCtx)
 
@@ -127,8 +113,12 @@ func (s *Service) sendViaIntegration(ctx context.Context, envID string, channel 
 	switch route.Type {
 	case routing.TypeBuiltin:
 		if route.Name != routing.BuiltinSMTP {
-			return nil, fmt.Errorf("builtin provider %s is not sendable via integration", route.Name)
+			return nil, fmt.Errorf("builtin provider %s is not sendable via channel delivery", route.Name)
 		}
+		if err := s.smtp.Validate(); err != nil {
+			return nil, err
+		}
+		cfg.Raw = s.smtp.Raw()
 		result = s.smtpSend(ctx, cfg, msgPayload)
 	case routing.TypeRemote:
 		taskID := ""
@@ -145,7 +135,7 @@ func (s *Service) sendViaIntegration(ctx context.Context, envID string, channel 
 		}
 		result = s.remote.Send(ctx, route, contract.DeliveryRequest{
 			TaskID:         taskID,
-			ProviderName:   integration.ProviderID,
+			ProviderName:   route.Name,
 			TraceID:        traceID,
 			ProviderConfig: cfg,
 			Message:        msgPayload,
@@ -164,7 +154,7 @@ func (s *Service) sendViaIntegration(ctx context.Context, envID string, channel 
 
 	ref := result.ProviderBizID
 	if ref == "" {
-		ref = integration.ProviderID
+		ref = route.Name
 	}
 	msg := &domain.Message{
 		EnvID:        envID,

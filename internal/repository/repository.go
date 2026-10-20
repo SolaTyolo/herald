@@ -42,12 +42,6 @@ type Store interface {
 	RemoveTopicSubscription(ctx context.Context, envID, topicKey, subscriberID string) error
 	ListTopicSubscribers(ctx context.Context, topicID string, excludePK *string) ([]domain.Subscriber, error)
 
-	// Channel integrations
-	CreateIntegration(ctx context.Context, integration *domain.Integration) error
-	ListIntegrations(ctx context.Context, envID string) ([]domain.Integration, error)
-	DeleteIntegration(ctx context.Context, envID, id string) error
-	ListActiveIntegrations(ctx context.Context, envID string, channel domain.ChannelType, primaryOnly bool) ([]domain.Integration, error)
-
 	// Notifications and delivery jobs
 	GetJobsByNotification(ctx context.Context, notificationID string) ([]domain.Job, error)
 	GetNotification(ctx context.Context, id string) (*domain.Notification, error)

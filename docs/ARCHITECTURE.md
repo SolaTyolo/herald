@@ -29,10 +29,10 @@ internal/
   repository/           Store 端口 + Open 工厂
   service/              用例层
   workflow/             步骤编排引擎
-  delivery/             smtp / in_app / remote + resultqueue
+  delivery/             smtp / inapp / remote + resultqueue
   routing/              YAML 路由表 + 热加载 + 健康探测
   queue/asynq/          任务入队
-  realtime/bridge/      Worker ↔ API（in_app webhook）
+  realtime/bridge/      Worker ↔ API（inapp webhook）
   telemetry/
   transport/http/
   bootstrap/
@@ -79,7 +79,7 @@ flowchart TB
 - 业务层只依赖 `repository.Store` 与 `routing.Table` / delivery，不感知 GORM
 - builtin 本地执行；remote 转发用户 Worker
 - `QUEUE_MODE=asynq` 时 API 与 Worker 共用 `PROVIDERS_CONFIG`、`REDIS_ADDR`；`local` 单进程、不用 Redis
-- `Integration.providerId` 必须等于 YAML `providerName`
+- 投递按 YAML `channel` 选择 provider；SMTP 凭据来自 `SMTP_*` 环境变量
 
 ## 3. 持久化
 
@@ -97,10 +97,10 @@ flowchart TB
 
 ```
 delivery.SendChannel
-  ├─ in_app  → CreateMessage + bridge.Publisher
-  └─ 其他 channel → ListActiveIntegrations → routing.Lookup(providerId)
-       ├─ builtin smtp_email → 本地 SMTP
-       └─ remote → POST service.endpoint
+  ├─ inapp   → CreateMessage + bridge.Publisher
+  └─ 其他 channel → routing.ProvidersForChannel
+       ├─ builtin smtp_email → 本地 SMTP（SMTP_* 环境变量）
+       └─ remote → POST service.endpoint（密钥由用户 Worker 自行保管）
             └─ async：Worker 202 + Redis 结果队列；sync：HTTP 响应体
 ```
 
@@ -121,7 +121,7 @@ POST /v1/templates/{id}/preview
 ### In-app
 
 ```
-in_app 步骤 → Worker 写 messages → bridge.Publisher
+inapp 步骤 → Worker 写 messages → bridge.Publisher
          → API bridge.Subscriber →（可选）POST subscriber.webhookUrl
 客户端：GET /v1/subscribers/{id}/messages
 ```
@@ -132,7 +132,7 @@ in_app 步骤 → Worker 写 messages → bridge.Publisher
 |------|------|
 | 重试 | 仅 `DeliveryError.retryable=true` 触发 Asynq 重试；否则 `SkipRetry` |
 | 幂等 | 发前 `GetMessageByJobID`；已有 message 则跳过 |
-| Failover | `Retryable` 不上探其他 Integration |
+| Failover | `Retryable` 不上探同 channel 的其他 provider |
 | 健康探测 | YAML `healthCheck` 周期探测；不健康则 remote 可重试失败 |
 | Topic | 触发入队 `workflow:topic_fanout`，响应 `async: true` |
 
@@ -186,7 +186,7 @@ Worker 对 `process_job` / `digest_flush` / `topic_fanout` 与 remote HTTP 打 s
 | 资产 | 机制 |
 |------|------|
 | API Key | bcrypt + `key_prefix` |
-| Integration 凭据 | AES-GCM；`ENCRYPTION_KEY` 32 字节 |
+| SMTP | 进程环境变量 `SMTP_*`（勿写入仓库） |
 | Message API | 更新绑定 `(env_id, subscriber_pk)` |
 
 ## 8. 部署
@@ -194,7 +194,7 @@ Worker 对 `process_job` / `digest_flush` / `topic_fanout` 与 remote HTTP 打 s
 1. Migration 仅 API 执行
 2. API 与 Worker 挂载同一 `PROVIDERS_CONFIG`
 3. `QUEUE_MODE=asynq` 时共用 Redis（Asynq、bridge、结果队列、throttle）
-4. 生产禁止默认 `ENCRYPTION_KEY`（除非 `DEV_MODE`）
+4. 发邮件时 API 与 Worker 配置相同的 `SMTP_*`
 5. 用户 Delivery Worker 独立部署，YAML 配置 endpoint；async 模式需能写同一 Redis
 
 ```bash
@@ -202,6 +202,9 @@ make docker-up
 DEV_MODE=true make build
 DEV_MODE=true make run-api    # terminal 1
 make run-worker               # terminal 2
+
+# 或把 API 与 Worker 一起打进镜像（profile app，含 Postgres 与 Redis）
+make docker-app
 ```
 
 ## 9. 环境变量
@@ -214,9 +217,12 @@ make run-worker               # terminal 2
 | `STORE_FILE_PATH` | `./data` | file 模式目录 |
 | `QUEUE_MODE` | `asynq` | `local`（无 Redis）或 `asynq` |
 | `REDIS_ADDR` | `localhost:6379` | 仅 `QUEUE_MODE=asynq`：任务队列、bridge、结果队列 |
-| `ENCRYPTION_KEY` | — | 32 字节 |
 | `DEV_MODE` | `false` | 本地开发 |
 | `PROVIDERS_CONFIG` | `./config/providers.yaml` | YAML 路由 |
+| `SMTP_HOST` | — | 内置 `smtp_email`；发信必填 |
+| `SMTP_PORT` | `587` | SMTP 端口 |
+| `SMTP_FROM` | — | 发件人；发信必填 |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | — | 可选认证 |
 | `DELIVERY_RESULT_MODE` | `async`（`local` 未设置时为 `sync`） | `async` 仅 `asynq`；`sync` 为 HTTP 响应体 |
 | `HTTP_ADDR` | `:8080` | API 监听 |
 | `MAX_RECIPIENTS` | `100` | Topic 单次上限 |

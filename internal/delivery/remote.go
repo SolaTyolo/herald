@@ -137,28 +137,3 @@ func truncate(s string, n int) string {
 	return s[:n] + "..."
 }
 
-func credentialsToRaw(cfg map[string]any) map[string]string {
-	out := make(map[string]string, len(cfg))
-	for k, v := range cfg {
-		switch t := v.(type) {
-		case string:
-			out[k] = t
-		case json.Number:
-			out[k] = t.String()
-		case float64:
-			out[k] = fmt.Sprintf("%v", t)
-		case bool:
-			out[k] = fmt.Sprintf("%t", t)
-		case nil:
-			out[k] = ""
-		default:
-			b, err := json.Marshal(t)
-			if err != nil {
-				out[k] = fmt.Sprintf("%v", t)
-			} else {
-				out[k] = string(b)
-			}
-		}
-	}
-	return out
-}

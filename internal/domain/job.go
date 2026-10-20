@@ -5,19 +5,6 @@ import (
 	"time"
 )
 
-type Integration struct {
-	ID                   string      `json:"id"`
-	EnvID                string      `json:"envId"`
-	Channel              ChannelType `json:"channel"`
-	ProviderID           string      `json:"providerId"`
-	Name                 string      `json:"name"`
-	CredentialsEncrypted []byte      `json:"-"`
-	IsPrimary            bool        `json:"primary"`
-	Active               bool        `json:"active"`
-	CreatedAt            time.Time   `json:"createdAt"`
-	UpdatedAt            time.Time   `json:"updatedAt"`
-}
-
 type Notification struct {
 	ID            string             `json:"id"`
 	EnvID         string             `json:"envId"`

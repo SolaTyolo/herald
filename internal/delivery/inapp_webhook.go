@@ -12,7 +12,7 @@ import (
 	"github.com/SolaTyolo/herald/internal/repository"
 )
 
-// InAppWebhookDeliverer POSTs in_app messages to the subscriber's webhook URL.
+// InAppWebhookDeliverer POSTs inapp messages to the subscriber's webhook URL.
 type InAppWebhookDeliverer struct {
 	store  repository.Store
 	client *http.Client
@@ -32,11 +32,11 @@ func (d *InAppWebhookDeliverer) Handle(ev bridge.Event) {
 	ctx := context.Background()
 	sub, err := d.store.GetSubscriberByPK(ctx, ev.SubscriberPK)
 	if err != nil {
-		slog.Warn("in_app webhook: subscriber lookup failed", "subscriberPk", ev.SubscriberPK, "err", err)
+		slog.Warn("inapp webhook: subscriber lookup failed", "subscriberPk", ev.SubscriberPK, "err", err)
 		return
 	}
 	if sub.WebhookURL == "" {
-		slog.Debug("in_app webhook: no webhookUrl on subscriber", "subscriberId", sub.SubscriberID)
+		slog.Debug("inapp webhook: no webhookUrl on subscriber", "subscriberId", sub.SubscriberID)
 		return
 	}
 	body, err := json.Marshal(ev.Message)
@@ -45,18 +45,18 @@ func (d *InAppWebhookDeliverer) Handle(ev bridge.Event) {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sub.WebhookURL, bytes.NewReader(body))
 	if err != nil {
-		slog.Warn("in_app webhook: build request failed", "url", sub.WebhookURL, "err", err)
+		slog.Warn("inapp webhook: build request failed", "url", sub.WebhookURL, "err", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Herald/1.0")
 	resp, err := d.client.Do(req)
 	if err != nil {
-		slog.Warn("in_app webhook: post failed", "url", sub.WebhookURL, "err", err)
+		slog.Warn("inapp webhook: post failed", "url", sub.WebhookURL, "err", err)
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		slog.Warn("in_app webhook: non-2xx", "url", sub.WebhookURL, "status", resp.StatusCode)
+		slog.Warn("inapp webhook: non-2xx", "url", sub.WebhookURL, "status", resp.StatusCode)
 	}
 }

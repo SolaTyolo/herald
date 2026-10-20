@@ -3,6 +3,7 @@ package routing
 import (
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 )
 
@@ -47,6 +48,24 @@ func (t *Table) Lookup(providerName string) (Provider, bool) {
 func (t *Table) HasProvider(providerName string) bool {
 	_, ok := t.Lookup(providerName)
 	return ok
+}
+
+// ProvidersForChannel returns providers whose YAML channel matches, sorted by name.
+// inapp is never looked up here — SendChannel handles it as a core builtin.
+func (t *Table) ProvidersForChannel(channel string) []Provider {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	if t.snap == nil {
+		return nil
+	}
+	out := make([]Provider, 0)
+	for _, p := range t.snap.Providers {
+		if p.Channel == channel {
+			out = append(out, p)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 func (t *Table) ListProviders() []Provider {

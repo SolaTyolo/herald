@@ -33,7 +33,6 @@ func allModels() []any {
 		&workflowModel{}, &workflowStepModel{},
 		&subscriberModel{}, &subscriberPreferenceModel{},
 		&topicModel{}, &topicSubscriptionModel{},
-		&integrationModel{},
 		&notificationModel{}, &jobModel{},
 		&messageModel{}, &digestBucketModel{}, &executionLogModel{},
 		&notificationTemplateModel{}, &templateVersionModel{},
@@ -205,37 +204,6 @@ type topicSubscriptionModel struct {
 }
 
 func (topicSubscriptionModel) TableName() string { return "topic_subscriptions" }
-
-type integrationModel struct {
-	ID                   string    `gorm:"primaryKey;size:36"`
-	EnvID                string    `gorm:"size:36;not null;index"`
-	Channel              string    `gorm:"not null"`
-	ProviderID           string    `gorm:"not null"`
-	Name                 string    `gorm:"not null"`
-	CredentialsEncrypted []byte    `gorm:"not null"`
-	IsPrimary            bool      `gorm:"not null;default:false"`
-	Active               bool      `gorm:"not null;default:true"`
-	CreatedAt            time.Time `gorm:"not null"`
-	UpdatedAt            time.Time `gorm:"not null"`
-}
-
-func (integrationModel) TableName() string { return "integrations" }
-
-func integrationModelFromDomain(i *domain.Integration) integrationModel {
-	return integrationModel{
-		ID: i.ID, EnvID: i.EnvID, Channel: string(i.Channel), ProviderID: i.ProviderID, Name: i.Name,
-		CredentialsEncrypted: i.CredentialsEncrypted, IsPrimary: i.IsPrimary, Active: i.Active,
-		CreatedAt: i.CreatedAt, UpdatedAt: i.UpdatedAt,
-	}
-}
-
-func (m integrationModel) toDomain() (*domain.Integration, error) {
-	return &domain.Integration{
-		ID: m.ID, EnvID: m.EnvID, Channel: domain.ChannelType(m.Channel), ProviderID: m.ProviderID, Name: m.Name,
-		CredentialsEncrypted: m.CredentialsEncrypted, IsPrimary: m.IsPrimary, Active: m.Active,
-		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
-	}, nil
-}
 
 type notificationModel struct {
 	ID            string    `gorm:"primaryKey;size:36"`

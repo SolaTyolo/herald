@@ -1,8 +1,7 @@
-.PHONY: dev test build run-api run-worker docker-up docker-down
+.PHONY: dev test build run-api run-worker playground docker-up docker-down docker-app
 
 DATABASE_URL ?= postgres://herald:herald@localhost:5432/herald?sslmode=disable
 REDIS_ADDR ?= localhost:6379
-ENCRYPTION_KEY ?= 0123456789abcdef0123456789abcdef
 HTTP_ADDR ?= :8080
 DEV_MODE ?= true
 STORE_TYPE ?= db
@@ -11,14 +10,17 @@ STORE_FILE_PATH ?= ./data
 
 PROVIDERS_CONFIG ?= ./config/providers.yaml
 
-export DATABASE_URL REDIS_ADDR ENCRYPTION_KEY HTTP_ADDR DEV_MODE
+export DATABASE_URL REDIS_ADDR HTTP_ADDR DEV_MODE
 export STORE_TYPE DB_DRIVER STORE_FILE_PATH PROVIDERS_CONFIG
 
 docker-up:
 	docker compose -f deploy/docker-compose.yml up -d
 
 docker-down:
-	docker compose -f deploy/docker-compose.yml down
+	docker compose -f deploy/docker-compose.yml --profile app down
+
+docker-app:
+	docker compose -f deploy/docker-compose.yml --profile app up -d --build
 
 build:
 	go build -o bin/herald-api ./cmd/api
@@ -29,6 +31,9 @@ run-api: build
 
 run-worker: build
 	./bin/herald-worker
+
+playground:
+	go run ./e2e/playground
 
 test:
 	go test ./... -count=1

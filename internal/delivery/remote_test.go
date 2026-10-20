@@ -51,17 +51,3 @@ func TestRemoteClientSend(t *testing.T) {
 	}
 }
 
-func TestCredentialsToRaw(t *testing.T) {
-	t.Parallel()
-	raw := credentialsToRaw(map[string]any{
-		"secretId": "a",
-		"appId":    float64(123),
-		"nested":   map[string]any{"k": "v"},
-	})
-	if raw["secretId"] != "a" || raw["appId"] != "123" {
-		t.Fatalf("%v", raw)
-	}
-	if raw["nested"] == "" {
-		t.Fatal("nested should be json")
-	}
-}

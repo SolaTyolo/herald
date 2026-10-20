@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-const defaultEncryptionKey = "0123456789abcdef0123456789abcdef"
-
 type StoreType string
 
 const (
@@ -36,7 +34,6 @@ type Config struct {
 	DatabaseURL     string
 	StoreFilePath   string
 	RedisAddr       string
-	EncryptionKey   string
 	ProvidersConfig string
 	// QueueMode is local (in-process, no Redis) or asynq (Redis job queue, bridge, throttle, result queue).
 	QueueMode string
@@ -44,6 +41,13 @@ type Config struct {
 	DeliveryResultMode string
 	MaxRecipients      int
 	DevMode            bool
+
+	// Builtin SMTP (smtp_email). Optional until an email step runs.
+	SMTPHost     string
+	SMTPPort     string
+	SMTPFrom     string
+	SMTPUsername string
+	SMTPPassword string
 
 	// Telemetry
 	LogLevel           string
@@ -99,12 +103,16 @@ func Load() (*Config, error) {
 		DatabaseURL:        dbURL,
 		StoreFilePath:      getEnv("STORE_FILE_PATH", "./data"),
 		RedisAddr:          redisAddr,
-		EncryptionKey:      getEnv("ENCRYPTION_KEY", defaultEncryptionKey),
 		ProvidersConfig:    getEnv("PROVIDERS_CONFIG", "./config/providers.yaml"),
 		QueueMode:          queueMode,
 		DeliveryResultMode: resultMode,
 		MaxRecipients:      getEnvInt("MAX_RECIPIENTS", 100),
 		DevMode:            getEnvBool("DEV_MODE", false),
+		SMTPHost:           os.Getenv("SMTP_HOST"),
+		SMTPPort:           getEnv("SMTP_PORT", "587"),
+		SMTPFrom:           os.Getenv("SMTP_FROM"),
+		SMTPUsername:       os.Getenv("SMTP_USERNAME"),
+		SMTPPassword:       os.Getenv("SMTP_PASSWORD"),
 		LogLevel:           getEnv("LOG_LEVEL", "info"),
 		LogFormat:          getEnv("LOG_FORMAT", "text"),
 		OTelEnabled:        getEnvBool("OTEL_ENABLED", false),
@@ -112,12 +120,6 @@ func Load() (*Config, error) {
 		OTelServiceName:    getEnv("OTEL_SERVICE_NAME", "herald"),
 		OTelMetricsEnabled: getEnvBool("OTEL_METRICS_ENABLED", true),
 		OTelTracesEnabled:  getEnvBool("OTEL_TRACES_ENABLED", true),
-	}
-	if len(cfg.EncryptionKey) != 32 {
-		return nil, fmt.Errorf("ENCRYPTION_KEY must be 32 bytes")
-	}
-	if !cfg.DevMode && cfg.EncryptionKey == defaultEncryptionKey {
-		return nil, fmt.Errorf("refusing default ENCRYPTION_KEY outside DEV_MODE; set ENCRYPTION_KEY or DEV_MODE=true")
 	}
 	switch cfg.DeliveryResultMode {
 	case "sync", "async":

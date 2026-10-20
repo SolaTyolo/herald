@@ -1,3 +1,23 @@
+x-herald-build: &herald-build
+  context: ..
+  dockerfile: deploy/Dockerfile
+
+x-herald-env: &herald-env
+  DEV_MODE: "true"
+  STORE_TYPE: db
+  DB_DRIVER: postgres
+  DATABASE_URL: postgres://herald:herald@postgres:5432/herald?sslmode=disable
+  REDIS_ADDR: redis:6379
+  QUEUE_MODE: asynq
+  DELIVERY_RESULT_MODE: async
+  PROVIDERS_CONFIG: /app/config/providers.yaml
+  # Optional builtin SMTP — set when testing email:
+  # SMTP_HOST: smtp.example.com
+  # SMTP_PORT: "587"
+  # SMTP_FROM: noreply@example.com
+  # SMTP_USERNAME: ""
+  # SMTP_PASSWORD: ""
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -24,6 +44,45 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  api:
+    profiles: ["app"]
+    build: *herald-build
+    image: herald:local
+    environment:
+      <<: *herald-env
+      HTTP_ADDR: ":8080"
+    ports:
+      - "8188:8080"
+    volumes:
+      - ../config/providers.yaml:/app/config/providers.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    profiles: ["app"]
+    build: *herald-build
+    image: herald:local
+    command: ["/app/herald-worker"]
+    environment:
+      <<: *herald-env
+    volumes:
+      - ../config/providers.yaml:/app/config/providers.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:

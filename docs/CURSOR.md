@@ -30,9 +30,8 @@
 ### 新远端 Provider
 
 1. 读 `docs/PROVIDERS.md`
-2. 按 `pkg/contract` 自建 HTTP Worker（`POST /delivery`、`GET /health`）；async 模式写 Redis 结果队列
+2. 按 `pkg/contract` 自建 HTTP Worker（`POST /delivery`、`GET /health`）；async 模式写 Redis 结果队列；密钥放在 Worker 侧
 3. `config/providers.yaml` 增加 `service` + `providers`（`type: remote`）
-4. `POST /v1/integrations`，`providerId` = YAML 名
 
 ### 存储
 
@@ -74,5 +73,5 @@ codegraph init
 | Provider not found | `PROVIDERS_CONFIG` 是否声明；YAML 校验是否通过 |
 | remote 无结果 | `QUEUE_MODE=asynq` 时的 Redis（`REDIS_ADDR`）；`DELIVERY_RESULT_MODE` |
 | remote 投递失败 | Worker `/delivery`、`/health`；endpoint；健康探测 |
-| in_app 无 webhook | `asynq` 共用 `REDIS_ADDR`；`local` 为进程内 bridge |
+| inapp 无 webhook | `asynq` 共用 `REDIS_ADDR`；`local` 为进程内 bridge |
 | migration 失败 | 仅 API 迁移；`STORE_TYPE` / `DATABASE_URL` |

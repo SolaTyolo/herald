@@ -19,7 +19,6 @@ type API struct {
 	subscribers   *service.SubscriberService
 	workflows     *service.WorkflowService
 	topics        *service.TopicService
-	integrations  *service.IntegrationService
 	notifications *service.NotificationQueryService
 	messages      *service.MessageService
 	templates     *service.TemplateService
@@ -34,7 +33,6 @@ func NewAPI(
 	subscribers *service.SubscriberService,
 	workflows *service.WorkflowService,
 	topics *service.TopicService,
-	integrations *service.IntegrationService,
 	notifications *service.NotificationQueryService,
 	messages *service.MessageService,
 	templates *service.TemplateService,
@@ -45,7 +43,7 @@ func NewAPI(
 	return &API{
 		cfg:     cfg,
 		trigger: trigger, subscribers: subscribers, workflows: workflows,
-		topics: topics, integrations: integrations, notifications: notifications,
+		topics: topics, notifications: notifications,
 		messages: messages, templates: templates,
 		store: store, redis: redisClient, routes: routes,
 	}
@@ -78,12 +76,6 @@ func (a *API) Routes(r chi.Router) {
 		r.Delete("/{topicKey}", a.deleteTopic)
 		r.Post("/{topicKey}/subscriptions", a.subscribeTopic)
 		r.Delete("/{topicKey}/subscriptions/{subscriberId}", a.unsubscribeTopic)
-	})
-
-	r.Route("/v1/integrations", func(r chi.Router) {
-		r.Get("/", a.listIntegrations)
-		r.Post("/", a.createIntegration)
-		r.Delete("/{id}", a.deleteIntegration)
 	})
 
 	r.Get("/v1/notifications", a.listNotifications)

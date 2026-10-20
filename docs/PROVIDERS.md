@@ -49,33 +49,27 @@ providers:
 - `builtin` 禁止 `service`；名称仅 `smtp_email` / `inapp`
 - `remote` 必须引用已存在的 `service`
 - `service.endpoint` 为合法 `http` / `https` URL
-- Integration 的 `channel` 须与 YAML provider `channel` 一致（`inapp` ↔ `in_app`）
+- Workflow 按 **channel** 编排；投递时 `ProvidersForChannel` → 按名称排序尝试
 
-## Integration
+## 凭据
 
-1. YAML 声明 `providerName`
-2. `POST /v1/integrations`，`providerId` = YAML 名
-3. Workflow 按 **channel** 编排；投递时 `ListActiveIntegrations` → 路由表分流
-
-凭证：
-
-| provider | credentials |
-|----------|-------------|
-| `smtp_email` | 必填 `host`、`from`；可选 `port` / `username` / `password` |
-| remote | 不透明透传为 `providerConfig.raw`（字符串 map） |
-| `inapp` | **不要**建 Integration |
+| provider | 凭据位置 |
+|----------|----------|
+| `smtp_email` | 环境变量 `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` / `SMTP_USERNAME` / `SMTP_PASSWORD` |
+| remote | 用户 Worker 进程自行保管；Herald 传空 `providerConfig.raw` |
+| `inapp` | 无 |
 
 ## 内置 SMTP
 
-```json
-{
-  "host": "smtp.example.com",
-  "port": "587",
-  "username": "user",
-  "password": "pass",
-  "from": "noreply@example.com"
-}
+```bash
+export SMTP_HOST=smtp.example.com
+export SMTP_PORT=587
+export SMTP_FROM=noreply@example.com
+export SMTP_USERNAME=user
+export SMTP_PASSWORD=pass
 ```
+
+API 与 Worker 需配置相同值。
 
 ## 内置 InApp
 
@@ -141,9 +135,9 @@ API 校验后入队 fan-out，立即返回：
 
 ```
 Trigger → Asynq → workflow.Engine
-  → in_app → 本地写库
-  → 其他 → Integration.providerId → routing
-       → smtp_email → 本地 SMTP
+  → inapp → 本地写库
+  → 其他 → ProvidersForChannel → routing
+       → smtp_email → 本地 SMTP（SMTP_*）
        → remote → POST /delivery（+ 结果队列或 HTTP 体）
 ```
 

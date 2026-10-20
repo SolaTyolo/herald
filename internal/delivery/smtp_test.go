@@ -1,26 +1,16 @@
 package delivery
 
-import (
-	"context"
-	"testing"
+import "testing"
 
-	"github.com/SolaTyolo/herald/pkg/contract"
-)
-
-func TestDefaultSMTPSenderMissingConfig(t *testing.T) {
+func TestSMTPConfigValidate(t *testing.T) {
 	t.Parallel()
-	de := defaultSMTPSender(context.Background(), contract.ProviderConfig{Raw: map[string]string{}}, contract.Message{To: "a@b.com", Content: "x"})
-	if de.Success || de.Code != "smtp_config" {
-		t.Fatalf("%+v", de)
-	}
-}
-
-func TestValidateSMTPCredentials(t *testing.T) {
-	t.Parallel()
-	if err := ValidateSMTPCredentials(map[string]any{"host": "smtp.example.com", "from": "a@b.com"}); err != nil {
+	if err := (SMTPConfig{Host: "smtp.example.com", From: "a@b.com"}).Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateSMTPCredentials(map[string]any{"from": "a@b.com"}); err == nil {
-		t.Fatal("expected host error")
+	if err := (SMTPConfig{From: "a@b.com"}).Validate(); err == nil {
+		t.Fatal("expected host required")
+	}
+	if err := (SMTPConfig{Host: "smtp.example.com", From: "a@b.com", Port: "bad"}).Validate(); err == nil {
+		t.Fatal("expected port error")
 	}
 }

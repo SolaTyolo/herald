@@ -150,7 +150,7 @@ func Validate(f *File) (*Snapshot, error) {
 			if name == BuiltinSMTP && channel != "email" {
 				return nil, fmt.Errorf("providers.%s: channel must be email", name)
 			}
-			if name == BuiltinInApp && channel != "inapp" && channel != "in_app" {
+			if name == BuiltinInApp && channel != "inapp" {
 				return nil, fmt.Errorf("providers.%s: channel must be inapp", name)
 			}
 		case TypeRemote:

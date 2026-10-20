@@ -8,7 +8,7 @@ import (
 func TestRetryableStopsFailoverSemantics(t *testing.T) {
 	t.Parallel()
 	// SendChannel returns immediately on RetryableError so Asynq retries the same
-	// primary integration instead of failing over to another provider.
+	// provider instead of failing over to another YAML provider for the channel.
 	err := &RetryableError{Code: "net", Message: "timeout"}
 	if !IsRetryable(err) {
 		t.Fatal("expected retryable")

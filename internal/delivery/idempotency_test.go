@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/SolaTyolo/herald/internal/crypto"
 	"github.com/SolaTyolo/herald/internal/delivery"
 	"github.com/SolaTyolo/herald/internal/domain"
 	"github.com/SolaTyolo/herald/internal/repository/filestore"
@@ -49,11 +48,7 @@ providers:
 	if err != nil {
 		t.Fatal(err)
 	}
-	enc, err := crypto.NewEncryptor("0123456789abcdef0123456789abcdef")
-	if err != nil {
-		t.Fatal(err)
-	}
-	svc := delivery.New(store, enc, routing.NewTable("mem", snap), nil, delivery.Options{})
+	svc := delivery.New(store, routing.NewTable("mem", snap), nil, delivery.Options{})
 	got, err := svc.SendChannel(context.Background(), env.ID, domain.ChannelEmail, &domain.Subscriber{ID: "sub-1"}, &domain.MessageTemplate{Content: "new"}, &jobID, nil)
 	if err != nil {
 		t.Fatal(err)

@@ -2,14 +2,9 @@ package service
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
-	"github.com/SolaTyolo/herald/internal/crypto"
-	"github.com/SolaTyolo/herald/internal/delivery"
 	"github.com/SolaTyolo/herald/internal/domain"
 	"github.com/SolaTyolo/herald/internal/repository"
-	"github.com/SolaTyolo/herald/internal/routing"
 )
 
 type SubscriberService struct {
@@ -97,81 +92,6 @@ func (s *TopicService) Subscribe(ctx context.Context, envID, topicKey, subscribe
 
 func (s *TopicService) Unsubscribe(ctx context.Context, envID, topicKey, subscriberID string) error {
 	return s.store.RemoveTopicSubscription(ctx, envID, topicKey, subscriberID)
-}
-
-type IntegrationService struct {
-	store     repository.Store
-	encryptor *crypto.Encryptor
-	routes    *routing.Table
-}
-
-func NewIntegrationService(store repository.Store, encryptor *crypto.Encryptor, routes *routing.Table) *IntegrationService {
-	return &IntegrationService{store: store, encryptor: encryptor, routes: routes}
-}
-
-func (s *IntegrationService) Create(ctx context.Context, envID string, channel domain.ChannelType, providerID, name string, credentials map[string]any, primary, active bool) (*domain.Integration, error) {
-	route, ok := s.routes.Lookup(providerID)
-	if !ok {
-		return nil, fmt.Errorf("provider not in routing table: %s", providerID)
-	}
-	if route.Type == routing.TypeBuiltin && route.Name == routing.BuiltinInApp {
-		return nil, fmt.Errorf("inapp is core-builtin; do not create an integration for it")
-	}
-	if routeChannel := normalizeRouteChannel(route.Channel); routeChannel != channel {
-		return nil, fmt.Errorf("integration channel %q does not match provider channel %q", channel, route.Channel)
-	}
-	if err := validateIntegrationCredentials(route, credentials); err != nil {
-		return nil, err
-	}
-	enc, err := s.encryptor.EncryptJSON(credentials)
-	if err != nil {
-		return nil, err
-	}
-	i := &domain.Integration{
-		EnvID:                envID,
-		Channel:              channel,
-		ProviderID:           providerID,
-		Name:                 name,
-		CredentialsEncrypted: enc,
-		IsPrimary:            primary,
-		Active:               active,
-	}
-	if err := s.store.CreateIntegration(ctx, i); err != nil {
-		return nil, err
-	}
-	return i, nil
-}
-
-func validateIntegrationCredentials(route routing.Provider, credentials map[string]any) error {
-	if route.Type == routing.TypeBuiltin && route.Name == routing.BuiltinSMTP {
-		return delivery.ValidateSMTPCredentials(credentials)
-	}
-	return nil
-}
-
-func normalizeRouteChannel(ch string) domain.ChannelType {
-	switch strings.ToLower(strings.TrimSpace(ch)) {
-	case "email":
-		return domain.ChannelEmail
-	case "sms":
-		return domain.ChannelSMS
-	case "push":
-		return domain.ChannelPush
-	case "chat":
-		return domain.ChannelChat
-	case "inapp", "in_app":
-		return domain.ChannelInApp
-	default:
-		return domain.ChannelType(ch)
-	}
-}
-
-func (s *IntegrationService) List(ctx context.Context, envID string) ([]domain.Integration, error) {
-	return s.store.ListIntegrations(ctx, envID)
-}
-
-func (s *IntegrationService) Delete(ctx context.Context, envID, id string) error {
-	return s.store.DeleteIntegration(ctx, envID, id)
 }
 
 type NotificationQueryService struct {

@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Herald Playground</title>
+<style>
+  :root { color-scheme: light; --bg:#f4f5f7; --card:#fff; --line:#e2e4e8; --ink:#1c1e21; --muted:#5c6570; --accent:#1f4b99; --ok:#0d7a3f; --bad:#a32020; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 ui-sans-serif, system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  header { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; padding: 16px 20px; background: #fff; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 18px; margin: 0 16px 0 0; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  input, textarea, select, button { font: inherit; color: inherit; }
+  input, textarea, select { border: 1px solid var(--line); border-radius: 6px; padding: 7px 8px; background: #fff; }
+  textarea { min-height: 72px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  button { border: 0; border-radius: 6px; padding: 8px 12px; background: var(--accent); color: #fff; cursor: pointer; }
+  button.ghost { background: #eef1f6; color: var(--ink); }
+  button:disabled { opacity: .55; cursor: wait; }
+  nav { display: flex; gap: 4px; padding: 12px 20px 0; background: var(--bg); }
+  nav button { background: transparent; color: var(--muted); border-radius: 8px 8px 0 0; padding: 8px 16px; }
+  nav button[aria-selected="true"] { background: var(--card); color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+  main { max-width: 720px; padding: 0 20px 32px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 0 10px 10px 10px; padding: 14px; display: none; flex-direction: column; gap: 10px; }
+  section.active { display: flex; }
+  section h2 { margin: 0; font-size: 15px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-word; background: #f7f8fa; border-radius: 6px; padding: 8px; max-height: 220px; overflow: auto; font-size: 12px; }
+  .msg { border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  .msg small { color: var(--muted); }
+  .hint { margin: 0; color: var(--muted); font-size: 12px; }
+  iframe { width: 100%; height: 140px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  .key { min-width: 280px; flex: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Herald Playground</h1>
+  <label class="key">API Key
+    <input id="apiKey" type="password" autocomplete="off" placeholder="Bearer token">
+  </label>
+  <button type="button" id="saveKey" class="ghost">保存</button>
+</header>
+<nav>
+  <button type="button" data-tab="inapp" aria-selected="true">In-app</button>
+  <button type="button" data-tab="smtp" aria-selected="false">SMTP</button>
+  <button type="button" data-tab="template" aria-selected="false">Template</button>
+  <button type="button" data-tab="workflow" aria-selected="false">Workflow</button>
+</nav>
+<main>
+  <section id="tab-inapp" class="active">
+    <h2>In-app</h2>
+    <p class="hint">写入订阅者并触发 <code>playground-inapp</code>。asynq 模式需要 worker 在跑。</p>
+    <div class="row">
+      <label>Subscriber ID<input id="inSub" value="playground-user"></label>
+      <label>名字<input id="inName" value="Alice"></label>
+    </div>
+    <label>标题<input id="inTitle" value="你好 {{.name}}"></label>
+    <label>正文<textarea id="inBody">{{.name}}，这是一条应用内消息。</textarea></label>
+    <label>Payload JSON<textarea id="inPayload">{"name":"Alice"}</textarea></label>
+    <label>Template ID（可选，优先于上面的标题正文）<input id="inTemplate" placeholder="留空则用内联文案"></label>
+    <div class="actions">
+      <button type="button" id="sendInapp">发送</button>
+      <button type="button" id="refreshInbox" class="ghost">刷新收件箱</button>
+    </div>
+    <div id="inbox"></div>
+    <pre id="inLog"></pre>
+  </section>
+
+  <section id="tab-smtp">
+    <h2>SMTP</h2>
+    <p class="hint">凭据来自 API/Worker 环境变量 <code>SMTP_HOST</code> / <code>SMTP_PORT</code> / <code>SMTP_FROM</code> / <code>SMTP_USERNAME</code> / <code>SMTP_PASSWORD</code>。此处只触发 <code>playground-email</code>。</p>
+    <label>To<input id="smtpTo" placeholder="you@example.com"></label>
+    <label>Subject<input id="smtpSubject" value="Herald {{.name}}"></label>
+    <label>正文<textarea id="smtpBody">&lt;p&gt;Hi {{.name}}&lt;/p&gt;</textarea></label>
+    <label>Template ID（可选）<input id="smtpTemplate" placeholder="留空则用内联文案"></label>
+    <div class="actions"><button type="button" id="sendSmtp">发送邮件</button></div>
+    <pre id="smtpLog"></pre>
+  </section>
+
+  <section id="tab-template">
+    <h2>Template</h2>
+    <p class="hint">动态模板：创建并激活一个 version，可预览，也可填到 In-app、SMTP 或 Workflow 再发送。</p>
+    <label>名称<input id="tplName" value="playground"></label>
+    <label>Subject<input id="tplSubject" value="订单 {{.orderId}}"></label>
+    <label>HTML<textarea id="tplHtml">&lt;p&gt;{{.subscriber.firstName}}，订单 {{.orderId}} 已就绪。&lt;/p&gt;</textarea></label>
+    <label>Plain<textarea id="tplPlain">{{.subscriber.firstName}}，订单 {{.orderId}}</textarea></label>
+    <label>Preview data JSON<textarea id="tplData">{"orderId":"1001"}</textarea></label>
+    <div class="actions">
+      <button type="button" id="saveTpl">保存模板</button>
+      <button type="button" id="previewTpl" class="ghost">预览</button>
+      <button type="button" id="useInapp" class="ghost">用于 In-app</button>
+      <button type="button" id="useSmtp" class="ghost">用于 SMTP</button>
+      <button type="button" id="useWorkflow" class="ghost">用于 Workflow</button>
+    </div>
+    <p class="hint" id="tplId"></p>
+    <iframe id="preview" title="preview" sandbox=""></iframe>
+    <pre id="tplLog"></pre>
+  </section>
+
+  <section id="tab-workflow">
+    <h2>Workflow</h2>
+    <p class="hint">创建或更新工作流，再按一个订阅者或一个 Topic 触发。<code>triggerId</code> 就是 <code>POST /v1/events/trigger</code> 的 <code>name</code>。步骤里有 <code>templateId</code> 时不用内联 <code>template</code>。</p>
+    <div class="row">
+      <label>名称<input id="wfName" value="playground"></label>
+      <label>Trigger ID<input id="wfTrigger" value="playground"></label>
+    </div>
+    <label>Steps JSON<textarea id="wfSteps" style="min-height:140px">[
+  {"type":"inapp","template":{"title":"你好 {{.name}}","content":"{{.name}}，这是一条应用内消息。","subject":"你好 {{.name}}"}}
+]</textarea></label>
+    <div class="actions">
+      <button type="button" id="saveWf">创建 / 更新</button>
+      <button type="button" id="refreshWf" class="ghost">刷新列表</button>
+      <button type="button" id="deleteWf" class="ghost">删除当前</button>
+    </div>
+    <div id="wfList"></div>
+    <div class="row">
+      <label>Subscriber ID<input id="wfSub" value="playground-user" placeholder="与 Topic 二选一"></label>
+      <label>Topic key<input id="wfTopic" placeholder="发给该 Topic 全部订阅者"></label>
+    </div>
+    <label>Payload JSON<textarea id="wfPayload">{"name":"Alice"}</textarea></label>
+    <div class="actions"><button type="button" id="triggerWf">触发</button></div>
+    <pre id="wfLog"></pre>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const store = localStorage;
+$("apiKey").value = store.getItem("herald.apiKey") || "";
+$("inTemplate").value = store.getItem("herald.templateId") || "";
+$("smtpTemplate").value = store.getItem("herald.templateId") || "";
+
+$("saveKey").onclick = () => {
+  store.setItem("herald.apiKey", $("apiKey").value.trim());
+};
+
+async function api(method, path, body) {
+  const key = $("apiKey").value.trim();
+  if (!key) throw new Error("先填写 API Key");
+  const res = await fetch(path, {
+    method,
+    headers: {
+      "Authorization": "Bearer " + key,
+      "Content-Type": "application/json"
+    },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const text = await res.text();
+  let data = text;
+  try { data = text ? JSON.parse(text) : null; } catch (_) {}
+  if (!res.ok) {
+    const msg = data && data.error ? data.error : text || res.status;
+    throw new Error(method + " " + path + " → " + res.status + " " + msg);
+  }
+  return data;
+}
+
+function show(el, value) {
+  el.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
+
+async function ensureSubscriber(id, extra) {
+  return api("POST", "/v1/subscribers", Object.assign({ subscriberId: id }, extra));
+}
+
+async function ensureWorkflow(triggerId, name, step) {
+  const list = await api("GET", "/v1/workflows") || [];
+  const existing = list.find((w) => w.triggerId === triggerId);
+  const body = {
+    name,
+    triggerId,
+    active: true,
+    critical: true,
+    preferenceSettings: { inapp: true, email: true },
+    steps: [step]
+  };
+  if (existing) {
+    body.id = existing.id;
+    return api("PUT", "/v1/workflows/" + existing.id, body);
+  }
+  return api("POST", "/v1/workflows", body);
+}
+
+function step(type, templateId, inline) {
+  if (templateId) return { type, templateId };
+  return { type, template: inline };
+}
+
+async function pollJobs(tx, logEl) {
+  for (let i = 0; i < 8; i++) {
+    await new Promise((r) => setTimeout(r, 700));
+    const jobs = await api("GET", "/v1/notifications/" + tx + "/jobs");
+    const logs = await api("GET", "/v1/notifications/" + tx + "/logs");
+    show(logEl, { transactionId: tx, jobs, logs });
+    if (jobs && jobs.length && jobs.every((j) => ["completed", "failed", "skipped"].includes(j.status))) return;
+  }
+}
+
+async function renderInbox() {
+  const id = $("inSub").value.trim();
+  const items = await api("GET", "/v1/subscribers/" + encodeURIComponent(id) + "/messages?limit=20");
+  const box = $("inbox");
+  box.innerHTML = "";
+  (items || []).forEach((m) => {
+    const div = document.createElement("div");
+    div.className = "msg";
+    div.innerHTML = "<strong></strong><br><span></span><br><small></small>";
+    div.querySelector("strong").textContent = m.title || m.subject || "(no title)";
+    div.querySelector("span").textContent = m.content || "";
+    div.querySelector("small").textContent = (m.read ? "已读" : "未读") + " · " + (m.createdAt || "");
+    if (!m.read) {
+      const btn = document.createElement("button");
+      btn.className = "ghost";
+      btn.textContent = "标为已读";
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          await api("PATCH", "/v1/subscribers/" + encodeURIComponent(id) + "/messages/" + m.id, { read: true });
+          await renderInbox();
+        } catch (err) { show($("inLog"), String(err)); }
+      };
+      div.appendChild(btn);
+    }
+    box.appendChild(div);
+  });
+  if (!box.children.length) box.textContent = "收件箱为空";
+}
+
+$("sendInapp").onclick = async () => {
+  const btn = $("sendInapp");
+  btn.disabled = true;
+  try {
+    const sub = $("inSub").value.trim();
+    const payload = JSON.parse($("inPayload").value || "{}");
+    await ensureSubscriber(sub, { firstName: $("inName").value.trim(), email: "" });
+    const tpl = $("inTemplate").value.trim();
+    await ensureWorkflow("playground-inapp", "Playground in-app", step("inapp", tpl, {
+      title: $("inTitle").value,
+      content: $("inBody").value,
+      subject: $("inTitle").value
+    }));
+    const resp = await api("POST", "/v1/events/trigger", {
+      name: "playground-inapp",
+      to: { subscriberId: sub },
+      payload
+    });
+    show($("inLog"), resp);
+    if (resp && resp.transactionId) await pollJobs(resp.transactionId, $("inLog"));
+    await renderInbox();
+  } catch (err) {
+    show($("inLog"), String(err));
+  } finally { btn.disabled = false; }
+};
+
+$("refreshInbox").onclick = async () => {
+  try { await renderInbox(); } catch (err) { show($("inLog"), String(err)); }
+};
+
+$("sendSmtp").onclick = async () => {
+  const btn = $("sendSmtp");
+  btn.disabled = true;
+  try {
+    const to = $("smtpTo").value.trim();
+    await ensureSubscriber("playground-email", { email: to, firstName: "Alice" });
+    const tpl = $("smtpTemplate").value.trim();
+    await ensureWorkflow("playground-email", "Playground email", step("email", tpl, {
+      subject: $("smtpSubject").value,
+      content: $("smtpBody").value
+    }));
+    const resp = await api("POST", "/v1/events/trigger", {
+      name: "playground-email",
+      to: { subscriberId: "playground-email" },
+      payload: { name: "Alice" }
+    });
+    show($("smtpLog"), resp);
+    if (resp && resp.transactionId) await pollJobs(resp.transactionId, $("smtpLog"));
+  } catch (err) {
+    show($("smtpLog"), String(err));
+  } finally { btn.disabled = false; }
+};
+
+function rememberTemplate(id) {
+  store.setItem("herald.templateId", id);
+  $("tplId").textContent = "templateId: " + id;
+  $("inTemplate").value = id;
+  $("smtpTemplate").value = id;
+}
+
+let workflowId = "";
+
+function workflowBody() {
+  const steps = JSON.parse($("wfSteps").value || "[]");
+  if (!Array.isArray(steps) || !steps.length) throw new Error("至少一步");
+  return {
+    name: $("wfName").value.trim(),
+    triggerId: $("wfTrigger").value.trim(),
+    active: true,
+    critical: true,
+    preferenceSettings: { inapp: true, email: true },
+    steps
+  };
+}
+
+function fillWorkflow(wf) {
+  workflowId = wf.id || "";
+  $("wfName").value = wf.name || "";
+  $("wfTrigger").value = wf.triggerId || "";
+  $("wfSteps").value = JSON.stringify(wf.steps || [], null, 2);
+}
+
+async function renderWorkflows() {
+  const list = await api("GET", "/v1/workflows") || [];
+  const box = $("wfList");
+  box.innerHTML = "";
+  list.forEach((wf) => {
+    const div = document.createElement("div");
+    div.className = "msg";
+    const btn = document.createElement("button");
+    btn.className = "ghost";
+    btn.textContent = (wf.triggerId || wf.name) + (wf.active ? "" : " · inactive");
+    btn.onclick = () => {
+      fillWorkflow(wf);
+      show($("wfLog"), wf);
+    };
+    div.appendChild(btn);
+    box.appendChild(div);
+  });
+  if (!box.children.length) box.textContent = "还没有 workflow";
+}
+
+$("saveWf").onclick = async () => {
+  const btn = $("saveWf");
+  btn.disabled = true;
+  try {
+    const body = workflowBody();
+    if (!body.triggerId) throw new Error("triggerId 必填");
+    const list = await api("GET", "/v1/workflows") || [];
+    const existing = list.find((w) => w.id === workflowId) || list.find((w) => w.triggerId === body.triggerId);
+    let saved;
+    if (existing) {
+      body.id = existing.id;
+      saved = await api("PUT", "/v1/workflows/" + existing.id, body);
+      workflowId = existing.id;
+    } else {
+      saved = await api("POST", "/v1/workflows", body);
+      workflowId = saved.id;
+    }
+    show($("wfLog"), saved);
+    await renderWorkflows();
+  } catch (err) {
+    show($("wfLog"), String(err));
+  } finally { btn.disabled = false; }
+};
+
+$("refreshWf").onclick = async () => {
+  try { await renderWorkflows(); } catch (err) { show($("wfLog"), String(err)); }
+};
+
+$("deleteWf").onclick = async () => {
+  if (!workflowId) {
+    show($("wfLog"), "先从列表选一个 workflow");
+    return;
+  }
+  try {
+    await api("DELETE", "/v1/workflows/" + workflowId);
+    workflowId = "";
+    show($("wfLog"), "已删除");
+    await renderWorkflows();
+  } catch (err) {
+    show($("wfLog"), String(err));
+  }
+};
+
+$("triggerWf").onclick = async () => {
+  const btn = $("triggerWf");
+  btn.disabled = true;
+  try {
+    const name = $("wfTrigger").value.trim();
+    if (!name) throw new Error("triggerId 必填");
+    const payload = JSON.parse($("wfPayload").value || "{}");
+    const topic = $("wfTopic").value.trim();
+    const sub = $("wfSub").value.trim();
+    let to;
+    if (topic) to = { type: "Topic", topicKey: topic };
+    else {
+      if (!sub) throw new Error("填写 Subscriber ID 或 Topic key");
+      await ensureSubscriber(sub, { firstName: $("inName").value.trim() });
+      to = { subscriberId: sub };
+    }
+    const resp = await api("POST", "/v1/events/trigger", { name, to, payload });
+    show($("wfLog"), resp);
+    if (resp && resp.transactionId && !resp.async) await pollJobs(resp.transactionId, $("wfLog"));
+  } catch (err) {
+    show($("wfLog"), String(err));
+  } finally { btn.disabled = false; }
+};
+
+$("saveTpl").onclick = async () => {
+  const btn = $("saveTpl");
+  btn.disabled = true;
+  try {
+    let id = store.getItem("herald.templateId") || "";
+    if (id) {
+      try { await api("GET", "/v1/templates/" + id); }
+      catch (_) { id = ""; }
+    }
+    if (!id) {
+      const created = await api("POST", "/v1/templates", { name: $("tplName").value.trim(), generation: "dynamic" });
+      id = created.id;
+    } else {
+      await api("PUT", "/v1/templates/" + id, { name: $("tplName").value.trim(), generation: "dynamic" });
+    }
+    const ver = await api("POST", "/v1/templates/" + id + "/versions", {
+      name: "playground",
+      active: true,
+      subject: $("tplSubject").value,
+      htmlContent: $("tplHtml").value,
+      plainContent: $("tplPlain").value
+    });
+    rememberTemplate(id);
+    show($("tplLog"), ver);
+  } catch (err) {
+    show($("tplLog"), String(err));
+  } finally { btn.disabled = false; }
+};
+
+$("previewTpl").onclick = async () => {
+  try {
+    const id = store.getItem("herald.templateId");
+    if (!id) throw new Error("先保存模板");
+    const data = JSON.parse($("tplData").value || "{}");
+    const out = await api("POST", "/v1/templates/" + id + "/preview", {
+      data,
+      subscriber: { firstName: $("inName").value.trim() || "Alice" }
+    });
+    $("preview").srcdoc = out.htmlContent || "<pre>" + (out.plainContent || "") + "</pre>";
+    show($("tplLog"), out);
+  } catch (err) {
+    show($("tplLog"), String(err));
+  }
+};
+
+function showTab(name) {
+  document.querySelector('nav button[data-tab="' + name + '"]').click();
+}
+$("useInapp").onclick = () => {
+  $("inTemplate").value = store.getItem("herald.templateId") || $("inTemplate").value;
+  showTab("inapp");
+};
+$("useSmtp").onclick = () => {
+  $("smtpTemplate").value = store.getItem("herald.templateId") || $("smtpTemplate").value;
+  showTab("smtp");
+};
+$("useWorkflow").onclick = () => {
+  const id = store.getItem("herald.templateId") || "";
+  if (!id) {
+    show($("tplLog"), "先保存模板");
+    return;
+  }
+  $("wfSteps").value = JSON.stringify([{ type: "inapp", templateId: id }], null, 2);
+  showTab("workflow");
+};
+
+const saved = store.getItem("herald.templateId");
+if (saved) $("tplId").textContent = "templateId: " + saved;
+
+document.querySelectorAll("nav button").forEach((btn) => {
+  btn.onclick = () => {
+    document.querySelectorAll("nav button").forEach((b) => b.setAttribute("aria-selected", "false"));
+    document.querySelectorAll("main section").forEach((s) => s.classList.remove("active"));
+    btn.setAttribute("aria-selected", "true");
+    $("tab-" + btn.dataset.tab).classList.add("active");
+  };
+});
+</script>
+</body>
+</html>

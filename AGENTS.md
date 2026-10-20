@@ -22,8 +22,8 @@
 3. **Use `repository.IsNotFound(err)`** — No driver-specific not-found checks.
 4. **Role split** — `QUEUE_MODE=asynq`: API migrations + bridge subscriber; Worker runs Asynq. Same `PROVIDERS_CONFIG` and `REDIS_ADDR`. `local`: one process, no Redis.
 5. **In-app** — Core built-in; Worker persists + bridge publish; REST poll; optional `webhookUrl` on API.
-6. **Integration.providerId** must match a YAML `providerName`.
-7. **Remote workers** live in the user's process. Herald posts `pkg/contract.DeliveryRequest` to `POST /delivery`. Core must not import user provider implementations.
+6. **Channel → provider** — Delivery picks YAML providers by channel (`ProvidersForChannel`). Builtin SMTP credentials come from `SMTP_*` env, not the database.
+7. **Remote workers** live in the user's process. Herald posts `pkg/contract.DeliveryRequest` to `POST /delivery`. Core must not import user provider implementations. Remote secrets stay in the worker.
 8. **Minimal diffs** — Match surrounding code; no drive-by refactors.
 
 ## Layer map
@@ -42,6 +42,7 @@ make test
 make build
 DEV_MODE=true make run-api
 make run-worker
+make playground   # e2e UI on :8090 — see e2e/README.md
 make docker-up
 ```
 
@@ -50,6 +51,7 @@ make docker-up
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `PROVIDERS_CONFIG` | `./config/providers.yaml` | YAML routing (hot-reload) |
+| `SMTP_HOST` / `SMTP_FROM` / … | — | Builtin `smtp_email` credentials |
 | `DELIVERY_RESULT_MODE` | `async` | Redis result queue / `sync` HTTP body |
 | `QUEUE_MODE` | `asynq` | `local` or `asynq` |
 | `REDIS_ADDR` | `localhost:6379` | required only for `asynq` |

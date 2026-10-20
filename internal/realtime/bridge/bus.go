@@ -17,7 +17,7 @@ type Event struct {
 // EventHandler processes events received on the API process.
 type EventHandler func(Event)
 
-// Publisher sends events from the Worker after an in_app message is persisted.
+// Publisher sends events from the Worker after an inapp message is persisted.
 type Publisher interface {
 	Publish(subscriberPK string, msg *domain.Message)
 }

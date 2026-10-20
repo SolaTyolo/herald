@@ -9,10 +9,10 @@ Novu-inspired notification infrastructure in Go. Channel delivery uses **Traefik
 
 ## Features
 
-- Workflow engine: **email, sms, push, chat, in-app** + delay / digest / throttle
+- Workflow engine: **email, sms, push, chat, inapp** + delay / digest / throttle
 - **Dynamic templates**: versions with one active version; workflow steps reference `templateId` and render trigger payload
-- Subscribers, topics, preferences, integrations
-- Builtin `smtp_email` + `inapp`; remote providers via user HTTP workers (`POST /delivery`)
+- Subscribers, topics, preferences
+- Builtin `smtp_email` (env `SMTP_*`) + `inapp`; remote providers via user HTTP workers (`POST /delivery`)
 - Async delivery results over Redis (default); Topic fan-out via Asynq
 - Storage: **file** (JSON) or **db** (PostgreSQL / MySQL / SQLite via GORM)
 - OpenTelemetry traces & metrics
@@ -33,6 +33,12 @@ make run-worker
 ```
 
 `QUEUE_MODE=asynq` (default): API and Worker share `PROVIDERS_CONFIG` and `REDIS_ADDR`. `QUEUE_MODE=local` runs jobs in the API process and does not use Redis.
+
+Manual e2e UI (separate from the API):
+
+```bash
+make playground   # http://localhost:8090 — see e2e/README.md
+```
 
 ```
 Authorization: Bearer <key>
@@ -68,7 +74,7 @@ curl -X POST http://localhost:8080/v1/events/trigger \
 | `DB_DRIVER` | `postgres` | `postgres`, `mysql`, `sqlite` |
 | `QUEUE_MODE` | `asynq` | `local` (no Redis) or `asynq` |
 | `REDIS_ADDR` | `localhost:6379` | Only when `QUEUE_MODE=asynq` |
-| `ENCRYPTION_KEY` | — | 32-byte key (required in production) |
+| `SMTP_HOST` / `SMTP_FROM` | — | Builtin email credentials |
 | `DEV_MODE` | `false` | Local dev defaults |
 | `HTTP_ADDR` | `:8080` | API listen address |
 

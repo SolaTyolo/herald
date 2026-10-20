@@ -1,7 +1,7 @@
 package contract
 
-// ProviderConfig holds channel credentials / settings.
-// Vendor-specific fields go in Raw; do not add top-level vendor fields.
+// ProviderConfig is passed to remote workers. Builtin SMTP uses process env
+// (SMTP_*), not Raw. Remote workers typically keep secrets locally; Raw may be empty.
 type ProviderConfig struct {
 	TimeoutSec int               `json:"timeout_sec"`
 	Raw        map[string]string `json:"raw"`
