@@ -4,6 +4,7 @@ x-herald-build: &herald-build
 
 x-herald-env: &herald-env
   DEV_MODE: "true"
+  API_KEY: herald-dev-key
   STORE_TYPE: db
   DB_DRIVER: postgres
   DATABASE_URL: postgres://herald:herald@postgres:5432/herald?sslmode=disable
@@ -11,12 +12,12 @@ x-herald-env: &herald-env
   QUEUE_MODE: asynq
   DELIVERY_RESULT_MODE: async
   PROVIDERS_CONFIG: /app/config/providers.yaml
-  # Optional builtin SMTP — set when testing email:
-  # SMTP_HOST: smtp.example.com
-  # SMTP_PORT: "587"
-  # SMTP_FROM: noreply@example.com
-  # SMTP_USERNAME: ""
-  # SMTP_PASSWORD: ""
+  # Builtin SMTP — pass from host/.env via compose interpolation (see Makefile --env-file)
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_FROM: ${SMTP_FROM:-}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
 
 services:
   postgres:

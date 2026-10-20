@@ -28,7 +28,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID, chimw.RealIP, chimw.Logger, chimw.Recoverer)
 	r.Use(handler.MetricsMiddleware)
-	handler.Mount(r, app.Store, app.Handler)
+	handler.Mount(r, app.Handler)
 
 	srv := &http.Server{Addr: app.Config.HTTPAddr, Handler: telemetry.WrapHandler("herald-api", r)}
 	go func() {

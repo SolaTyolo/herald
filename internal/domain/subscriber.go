@@ -7,7 +7,6 @@ import (
 
 type Subscriber struct {
 	ID              string          `json:"id"`
-	EnvID           string          `json:"envId"`
 	SubscriberID    string          `json:"subscriberId"`
 	Email           string          `json:"email,omitempty"`
 	Phone           string          `json:"phone,omitempty"`
@@ -32,7 +31,6 @@ type SubscriberPreference struct {
 
 type Topic struct {
 	ID        string    `json:"id"`
-	EnvID     string    `json:"envId"`
 	TopicKey  string    `json:"topicKey"`
 	Name      string    `json:"name,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`

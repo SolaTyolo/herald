@@ -28,7 +28,7 @@ func (s *Store) UpsertDigestBucket(ctx context.Context, bucket *domain.DigestBuc
 	}
 	var existing digestBucketModel
 	e := s.db.WithContext(ctx).
-		Where("env_id = ? AND digest_key = ? AND subscriber_pk = ? AND window_end > ?", bucket.EnvID, bucket.DigestKey, bucket.SubscriberPK, now).
+		Where("digest_key = ? AND subscriber_pk = ? AND window_end > ?", bucket.DigestKey, bucket.SubscriberPK, now).
 		Order("window_end ASC").First(&existing).Error
 	if e != nil {
 		return bucket, err
@@ -48,10 +48,10 @@ func (s *Store) UpsertDigestBucket(ctx context.Context, bucket *domain.DigestBuc
 	return bucket, nil
 }
 
-func (s *Store) GetDigestBucket(ctx context.Context, envID, digestKey, subscriberPK string) (*domain.DigestBucket, error) {
+func (s *Store) GetDigestBucket(ctx context.Context, digestKey, subscriberPK string) (*domain.DigestBucket, error) {
 	var m digestBucketModel
 	err := s.db.WithContext(ctx).
-		Where("env_id = ? AND digest_key = ? AND subscriber_pk = ? AND window_end > ?", envID, digestKey, subscriberPK, time.Now()).
+		Where("digest_key = ? AND subscriber_pk = ? AND window_end > ?", digestKey, subscriberPK, time.Now()).
 		Order("window_end ASC").First(&m).Error
 	if err != nil {
 		return nil, err

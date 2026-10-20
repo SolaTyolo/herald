@@ -24,14 +24,14 @@ func TestTemplateRoundTripSQLite(t *testing.T) {
 	}
 
 	tmpl := &domain.NotificationTemplate{Name: "welcome", Generation: domain.TemplateGenerationDynamic}
-	if err := store.CreateTemplate(ctx, "env-1", tmpl); err != nil {
+	if err := store.CreateTemplate(ctx, tmpl); err != nil {
 		t.Fatal(err)
 	}
 	ver := &domain.TemplateVersion{Name: "v1", Subject: "Hi {{.name}}", HTMLContent: "<b>{{.name}}</b>", Active: true}
-	if err := store.CreateTemplateVersion(ctx, "env-1", tmpl.ID, ver); err != nil {
+	if err := store.CreateTemplateVersion(ctx, tmpl.ID, ver); err != nil {
 		t.Fatal(err)
 	}
-	got, err := store.GetTemplate(ctx, "env-1", tmpl.ID)
+	got, err := store.GetTemplate(ctx, tmpl.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,10 +39,10 @@ func TestTemplateRoundTripSQLite(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 
-	if err := store.DeleteTemplate(ctx, "env-1", tmpl.ID); err != nil {
+	if err := store.DeleteTemplate(ctx, tmpl.ID); err != nil {
 		t.Fatal(err)
 	}
-	_, err = store.GetTemplate(ctx, "env-1", tmpl.ID)
+	_, err = store.GetTemplate(ctx, tmpl.ID)
 	if !repository.IsNotFound(err) {
 		t.Fatalf("expected not found, got %v", err)
 	}

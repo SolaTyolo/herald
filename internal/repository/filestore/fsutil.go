@@ -22,7 +22,17 @@ func (s *Store) Close() error { return nil }
 
 func (s *Store) ensureLayout() error {
 	for _, dir := range []string{
-		"envs",
+		"workflows",
+		"subscribers",
+		"preferences",
+		"topics",
+		"topic_subscriptions",
+		"notifications",
+		"jobs",
+		"messages",
+		"digests",
+		"execution_logs",
+		"templates",
 	} {
 		if err := os.MkdirAll(filepath.Join(s.root, dir), 0o755); err != nil {
 			return err
@@ -31,12 +41,8 @@ func (s *Store) ensureLayout() error {
 	return nil
 }
 
-func (s *Store) envRoot(envID string) string {
-	return filepath.Join(s.root, "envs", envID)
-}
-
-func (s *Store) collection(envID, name string) string {
-	dir := filepath.Join(s.envRoot(envID), name)
+func (s *Store) collection(name string) string {
+	dir := filepath.Join(s.root, name)
 	_ = os.MkdirAll(dir, 0o755)
 	return dir
 }
@@ -118,23 +124,6 @@ func listJSONFiles(dir string) ([]string, error) {
 
 func isNotFound(err error) bool {
 	return errors.Is(err, ErrNotFound)
-}
-
-func (s *Store) listEnvIDs() ([]string, error) {
-	entries, err := os.ReadDir(filepath.Join(s.root, "envs"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var out []string
-	for _, e := range entries {
-		if e.IsDir() {
-			out = append(out, e.Name())
-		}
-	}
-	return out, nil
 }
 
 func paginate[T any](items []T, limit, offset int) []T {

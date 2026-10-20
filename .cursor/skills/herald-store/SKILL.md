@@ -10,7 +10,7 @@ description: Implements or extends Herald persistence via repository.Store and G
 1. Add signature to `internal/repository/repository.go` (`Store` interface)
 2. Implement in **both** backends when behavior should match:
    - `internal/repository/gormstore/` — pick the domain file (`workflows.go`, `subscribers.go`, …)
-   - `internal/repository/filestore/` — same domain file name, JSON files under `envs/{envId}/`
+   - `internal/repository/filestore/` — same domain file name, JSON under `{STORE_FILE_PATH}/{collection}/`
 3. Use `repository.IsNotFound(err)` in callers (`workflow`, `service`, `handler`)
 
 ## GORM model (db mode only)
@@ -30,14 +30,14 @@ Env vars in `internal/config/config.go`:
 
 | Mode | Backend | Layout |
 |------|---------|--------|
-| `file` | `filestore` | `{STORE_FILE_PATH}/bootstrap.json`, `envs/{envId}/*.json` |
+| `file` | `filestore` | `{STORE_FILE_PATH}/{collection}/*.json` (e.g. `subscribers/`) |
 | `db` | `gormstore` | GORM AutoMigrate |
 
 ## Test
 
 ```bash
-STORE_TYPE=file DEV_MODE=true go test ./... -count=1
-STORE_TYPE=db DB_DRIVER=postgres DATABASE_URL='...' go test ./... -count=1
+API_KEY=test-key STORE_TYPE=file DEV_MODE=true go test ./... -count=1
+API_KEY=test-key STORE_TYPE=db DB_DRIVER=postgres DATABASE_URL='...' go test ./... -count=1
 ```
 
 ## Do not

@@ -185,9 +185,9 @@ Worker 对 `process_job` / `digest_flush` / `topic_fanout` 与 remote HTTP 打 s
 
 | 资产 | 机制 |
 |------|------|
-| API Key | bcrypt + `key_prefix` |
+| API Key | 环境变量 `API_KEY`；`Authorization: Bearer` 常量时间比对 |
 | SMTP | 进程环境变量 `SMTP_*`（勿写入仓库） |
-| Message API | 更新绑定 `(env_id, subscriber_pk)` |
+| Message API | 更新绑定 `subscriber_pk` |
 
 ## 8. 部署
 
@@ -211,6 +211,7 @@ make docker-app
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
+| `API_KEY` | —（必填） | REST Bearer 鉴权密钥 |
 | `STORE_TYPE` | `db` | `file` 或 `db` |
 | `DB_DRIVER` | `postgres` | `postgres` / `mysql` / `sqlite` |
 | `DATABASE_URL` | 按 driver | 数据库 DSN |

@@ -2,6 +2,7 @@ package filestore
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"sort"
 	"time"
@@ -11,27 +12,31 @@ import (
 	"github.com/SolaTyolo/herald/internal/domain"
 )
 
-func (s *Store) notificationsDir(envID string) string {
-	return s.collection(envID, "notifications")
+func (s *Store) notificationsDir() string {
+	return s.collection("notifications")
 }
 
-func (s *Store) notificationPath(envID, id string) string {
-	return filepath.Join(s.notificationsDir(envID), id+".json")
+func (s *Store) notificationPath(id string) string {
+	return filepath.Join(s.notificationsDir(), id+".json")
 }
 
-func (s *Store) jobsDir(envID string) string {
-	return s.collection(envID, "jobs")
+func (s *Store) jobsDir() string {
+	return s.collection("jobs")
 }
 
-func (s *Store) jobPath(envID, id string) string {
-	return filepath.Join(s.jobsDir(envID), id+".json")
+func (s *Store) jobPath(id string) string {
+	return filepath.Join(s.jobsDir(), id+".json")
 }
 
 func (s *Store) GetNotification(ctx context.Context, id string) (*domain.Notification, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.findNotificationByIDLocked(id)
+	var n domain.Notification
+	if err := readJSON(s.notificationPath(id), &n); err != nil {
+		return nil, err
+	}
+	return &n, nil
 }
 
 func (s *Store) GetJobsByNotification(ctx context.Context, notificationID string) ([]domain.Job, error) {
@@ -59,7 +64,7 @@ func (s *Store) CreateNotification(ctx context.Context, n *domain.Notification, 
 	if n.Status == "" {
 		n.Status = domain.NotificationPending
 	}
-	if err := writeJSON(s.notificationPath(n.EnvID, n.ID), n); err != nil {
+	if err := writeJSON(s.notificationPath(n.ID), n); err != nil {
 		return err
 	}
 	now := time.Now()
@@ -70,18 +75,18 @@ func (s *Store) CreateNotification(ctx context.Context, n *domain.Notification, 
 		j.Status = domain.JobPending
 		j.CreatedAt = now
 		j.UpdatedAt = now
-		if err := writeJSON(s.jobPath(n.EnvID, j.ID), j); err != nil {
+		if err := writeJSON(s.jobPath(j.ID), j); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Store) GetNotificationByTransaction(ctx context.Context, envID, transactionID, subscriberPK string) (*domain.Notification, error) {
+func (s *Store) GetNotificationByTransaction(ctx context.Context, transactionID, subscriberPK string) (*domain.Notification, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	files, err := listJSONFiles(s.notificationsDir(envID))
+	files, err := listJSONFiles(s.notificationsDir())
 	if err != nil {
 		return nil, err
 	}
@@ -97,11 +102,11 @@ func (s *Store) GetNotificationByTransaction(ctx context.Context, envID, transac
 	return nil, ErrNotFound
 }
 
-func (s *Store) ListNotifications(ctx context.Context, envID string, limit, offset int) ([]domain.Notification, error) {
+func (s *Store) ListNotifications(ctx context.Context, limit, offset int) ([]domain.Notification, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	files, err := listJSONFiles(s.notificationsDir(envID))
+	files, err := listJSONFiles(s.notificationsDir())
 	if err != nil {
 		return nil, err
 	}
@@ -124,19 +129,23 @@ func (s *Store) UpdateNotificationStatus(ctx context.Context, id string, status 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	n, envID, err := s.findNotificationWithEnvLocked(id)
-	if err != nil {
+	var n domain.Notification
+	if err := readJSON(s.notificationPath(id), &n); err != nil {
 		return err
 	}
 	n.Status = status
-	return writeJSON(s.notificationPath(envID, n.ID), n)
+	return writeJSON(s.notificationPath(n.ID), &n)
 }
 
 func (s *Store) GetJob(ctx context.Context, id string) (*domain.Job, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.findJobByIDLocked(id)
+	var j domain.Job
+	if err := readJSON(s.jobPath(id), &j); err != nil {
+		return nil, err
+	}
+	return &j, nil
 }
 
 func (s *Store) GetNextJob(ctx context.Context, notificationID string, afterOrder int) (*domain.Job, error) {
@@ -162,19 +171,21 @@ func (s *Store) UpdateJob(ctx context.Context, job *domain.Job) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, envID, err := s.findJobWithEnvLocked(job.ID)
-	if err != nil {
+	if _, err := os.Stat(s.jobPath(job.ID)); err != nil {
+		if os.IsNotExist(err) {
+			return ErrNotFound
+		}
 		return err
 	}
 	job.UpdatedAt = time.Now()
-	return writeJSON(s.jobPath(envID, job.ID), job)
+	return writeJSON(s.jobPath(job.ID), job)
 }
 
-func (s *Store) ListJobsByTransaction(ctx context.Context, envID, transactionID string) ([]domain.Job, error) {
+func (s *Store) ListJobsByTransaction(ctx context.Context, transactionID string) ([]domain.Job, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	files, err := listJSONFiles(s.notificationsDir(envID))
+	files, err := listJSONFiles(s.notificationsDir())
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +199,7 @@ func (s *Store) ListJobsByTransaction(ctx context.Context, envID, transactionID 
 			notificationIDs[n.ID] = struct{}{}
 		}
 	}
-	jobs, err := s.listJobsInEnvLocked(envID, func(j *domain.Job) bool {
+	jobs, err := s.listJobsLocked(func(j *domain.Job) bool {
 		_, ok := notificationIDs[j.NotificationID]
 		return ok
 	})
@@ -201,86 +212,8 @@ func (s *Store) ListJobsByTransaction(ctx context.Context, envID, transactionID 
 	return jobs, nil
 }
 
-func (s *Store) findNotificationByIDLocked(id string) (*domain.Notification, error) {
-	envIDs, err := s.listEnvIDs()
-	if err != nil {
-		return nil, err
-	}
-	for _, envID := range envIDs {
-		path := s.notificationPath(envID, id)
-		var n domain.Notification
-		if err := readJSON(path, &n); err != nil {
-			if isNotFound(err) {
-				continue
-			}
-			return nil, err
-		}
-		return &n, nil
-	}
-	return nil, ErrNotFound
-}
-
-func (s *Store) findNotificationWithEnvLocked(id string) (*domain.Notification, string, error) {
-	envIDs, err := s.listEnvIDs()
-	if err != nil {
-		return nil, "", err
-	}
-	for _, envID := range envIDs {
-		path := s.notificationPath(envID, id)
-		var n domain.Notification
-		if err := readJSON(path, &n); err != nil {
-			if isNotFound(err) {
-				continue
-			}
-			return nil, "", err
-		}
-		return &n, envID, nil
-	}
-	return nil, "", ErrNotFound
-}
-
-func (s *Store) findJobByIDLocked(id string) (*domain.Job, error) {
-	job, _, err := s.findJobWithEnvLocked(id)
-	return job, err
-}
-
-func (s *Store) findJobWithEnvLocked(id string) (*domain.Job, string, error) {
-	envIDs, err := s.listEnvIDs()
-	if err != nil {
-		return nil, "", err
-	}
-	for _, envID := range envIDs {
-		path := s.jobPath(envID, id)
-		var j domain.Job
-		if err := readJSON(path, &j); err != nil {
-			if isNotFound(err) {
-				continue
-			}
-			return nil, "", err
-		}
-		return &j, envID, nil
-	}
-	return nil, "", ErrNotFound
-}
-
 func (s *Store) listJobsLocked(match func(*domain.Job) bool) ([]domain.Job, error) {
-	envIDs, err := s.listEnvIDs()
-	if err != nil {
-		return nil, err
-	}
-	var out []domain.Job
-	for _, envID := range envIDs {
-		jobs, err := s.listJobsInEnvLocked(envID, match)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, jobs...)
-	}
-	return out, nil
-}
-
-func (s *Store) listJobsInEnvLocked(envID string, match func(*domain.Job) bool) ([]domain.Job, error) {
-	files, err := listJSONFiles(s.jobsDir(envID))
+	files, err := listJSONFiles(s.jobsDir())
 	if err != nil {
 		return nil, err
 	}

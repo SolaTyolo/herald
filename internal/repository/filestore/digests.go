@@ -13,12 +13,12 @@ import (
 	"github.com/SolaTyolo/herald/internal/domain"
 )
 
-func (s *Store) digestsDir(envID string) string {
-	return s.collection(envID, "digests")
+func (s *Store) digestsDir() string {
+	return s.collection("digests")
 }
 
-func (s *Store) digestPath(envID, id string) string {
-	return filepath.Join(s.digestsDir(envID), id+".json")
+func (s *Store) digestPath(id string) string {
+	return filepath.Join(s.digestsDir(), id+".json")
 }
 
 func (s *Store) UpsertDigestBucket(ctx context.Context, bucket *domain.DigestBucket) (*domain.DigestBucket, error) {
@@ -34,7 +34,7 @@ func (s *Store) UpsertDigestBucket(ctx context.Context, bucket *domain.DigestBuc
 		bucket.CreatedAt = now
 	}
 
-	path := s.digestPath(bucket.EnvID, bucket.ID)
+	path := s.digestPath(bucket.ID)
 	if _, err := os.Stat(path); err == nil {
 		if err := writeJSON(path, bucket); err != nil {
 			return bucket, err
@@ -44,7 +44,7 @@ func (s *Store) UpsertDigestBucket(ctx context.Context, bucket *domain.DigestBuc
 		return bucket, err
 	}
 
-	existing, err := s.findActiveDigestBucketLocked(bucket.EnvID, bucket.DigestKey, bucket.SubscriberPK, now)
+	existing, err := s.findActiveDigestBucketLocked(bucket.DigestKey, bucket.SubscriberPK, now)
 	if err != nil {
 		if isNotFound(err) {
 			if err := writeJSON(path, bucket); err != nil {
@@ -63,7 +63,7 @@ func (s *Store) UpsertDigestBucket(ctx context.Context, bucket *domain.DigestBuc
 	merged, _ := json.Marshal(events)
 	existing.Events = merged
 	existing.UpdatedAt = now
-	if err := writeJSON(s.digestPath(bucket.EnvID, existing.ID), &existing); err != nil {
+	if err := writeJSON(s.digestPath(existing.ID), &existing); err != nil {
 		return bucket, err
 	}
 	bucket.ID = existing.ID
@@ -72,55 +72,37 @@ func (s *Store) UpsertDigestBucket(ctx context.Context, bucket *domain.DigestBuc
 	return bucket, nil
 }
 
-func (s *Store) GetDigestBucket(ctx context.Context, envID, digestKey, subscriberPK string) (*domain.DigestBucket, error) {
+func (s *Store) GetDigestBucket(ctx context.Context, digestKey, subscriberPK string) (*domain.DigestBucket, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.findActiveDigestBucketLocked(envID, digestKey, subscriberPK, time.Now())
+	return s.findActiveDigestBucketLocked(digestKey, subscriberPK, time.Now())
 }
 
 func (s *Store) GetDigestBucketByID(ctx context.Context, id string) (*domain.DigestBucket, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	envIDs, err := s.listEnvIDs()
-	if err != nil {
+	var bucket domain.DigestBucket
+	if err := readJSON(s.digestPath(id), &bucket); err != nil {
 		return nil, err
 	}
-	for _, envID := range envIDs {
-		var bucket domain.DigestBucket
-		if err := readJSON(s.digestPath(envID, id), &bucket); err != nil {
-			if isNotFound(err) {
-				continue
-			}
-			return nil, err
-		}
-		return &bucket, nil
-	}
-	return nil, ErrNotFound
+	return &bucket, nil
 }
 
 func (s *Store) DeleteDigestBucket(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	envIDs, err := s.listEnvIDs()
-	if err != nil {
-		return err
+	err := deleteFile(s.digestPath(id))
+	if isNotFound(err) {
+		return nil
 	}
-	for _, envID := range envIDs {
-		path := s.digestPath(envID, id)
-		if err := deleteFile(path); err == nil {
-			return nil
-		} else if !isNotFound(err) {
-			return err
-		}
-	}
-	return nil
+	return err
 }
 
-func (s *Store) findActiveDigestBucketLocked(envID, digestKey, subscriberPK string, now time.Time) (*domain.DigestBucket, error) {
-	files, err := listJSONFiles(s.digestsDir(envID))
+func (s *Store) findActiveDigestBucketLocked(digestKey, subscriberPK string, now time.Time) (*domain.DigestBucket, error) {
+	files, err := listJSONFiles(s.digestsDir())
 	if err != nil {
 		return nil, err
 	}

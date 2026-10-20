@@ -19,9 +19,9 @@ func (s *Store) CreateExecutionLog(ctx context.Context, log *domain.ExecutionLog
 	return s.db.WithContext(ctx).Create(executionLogModelFromDomain(log)).Error
 }
 
-func (s *Store) ListExecutionLogs(ctx context.Context, envID, transactionID string) ([]domain.ExecutionLog, error) {
+func (s *Store) ListExecutionLogs(ctx context.Context, transactionID string) ([]domain.ExecutionLog, error) {
 	var rows []executionLogModel
-	if err := s.db.WithContext(ctx).Where("env_id = ? AND transaction_id = ?", envID, transactionID).
+	if err := s.db.WithContext(ctx).Where("transaction_id = ?", transactionID).
 		Order("created_at ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}

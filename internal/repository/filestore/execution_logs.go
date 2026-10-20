@@ -12,12 +12,12 @@ import (
 	"github.com/SolaTyolo/herald/internal/domain"
 )
 
-func (s *Store) executionLogsDir(envID string) string {
-	return s.collection(envID, "execution_logs")
+func (s *Store) executionLogsDir() string {
+	return s.collection("execution_logs")
 }
 
-func (s *Store) executionLogPath(envID, id string) string {
-	return filepath.Join(s.executionLogsDir(envID), id+".json")
+func (s *Store) executionLogPath(id string) string {
+	return filepath.Join(s.executionLogsDir(), id+".json")
 }
 
 func (s *Store) CreateExecutionLog(ctx context.Context, log *domain.ExecutionLog) error {
@@ -29,14 +29,14 @@ func (s *Store) CreateExecutionLog(ctx context.Context, log *domain.ExecutionLog
 	if log.Metadata == nil {
 		log.Metadata = json.RawMessage("{}")
 	}
-	return writeJSON(s.executionLogPath(log.EnvID, log.ID), log)
+	return writeJSON(s.executionLogPath(log.ID), log)
 }
 
-func (s *Store) ListExecutionLogs(ctx context.Context, envID, transactionID string) ([]domain.ExecutionLog, error) {
+func (s *Store) ListExecutionLogs(ctx context.Context, transactionID string) ([]domain.ExecutionLog, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	files, err := listJSONFiles(s.executionLogsDir(envID))
+	files, err := listJSONFiles(s.executionLogsDir())
 	if err != nil {
 		return nil, err
 	}

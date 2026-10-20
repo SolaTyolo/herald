@@ -30,7 +30,6 @@ func NewEngine(store repository.Store, queue asynqqueue.Enqueuer, delivery *deli
 }
 
 type JobContext struct {
-	EnvID         string
 	TransactionID string
 	Workflow      *domain.Workflow
 	Notification  *domain.Notification
@@ -38,7 +37,7 @@ type JobContext struct {
 	Step          *domain.WorkflowStep
 }
 
-func (e *Engine) ProcessJob(ctx context.Context, envID, jobID string) error {
+func (e *Engine) ProcessJob(ctx context.Context, jobID string) error {
 	job, err := e.store.GetJob(ctx, jobID)
 	if err != nil {
 		return err
@@ -50,9 +49,6 @@ func (e *Engine) ProcessJob(ctx context.Context, envID, jobID string) error {
 	jc, err := e.loadNotificationContext(ctx, job)
 	if err != nil {
 		return err
-	}
-	if jc.EnvID != envID {
-		return fmt.Errorf("env mismatch: job %s", jobID)
 	}
 
 	now := time.Now()
@@ -102,7 +98,7 @@ func (e *Engine) ProcessJob(ctx context.Context, envID, jobID string) error {
 
 		next, err := e.store.GetNextJob(ctx, job.NotificationID, job.StepOrder)
 		if err == nil && next != nil {
-			return e.queue.EnqueueJob(ctx, envID, next.ID, next.ScheduledAt)
+			return e.queue.EnqueueJob(ctx, next.ID, next.ScheduledAt)
 		}
 		if err != nil && !repository.IsNotFound(err) {
 			return err
@@ -114,7 +110,6 @@ func (e *Engine) ProcessJob(ctx context.Context, envID, jobID string) error {
 
 func (e *Engine) loadNotificationContext(ctx context.Context, job *domain.Job) (*JobContext, error) {
 	type ctxPayload struct {
-		EnvID         string `json:"envId"`
 		TransactionID string `json:"transactionId"`
 		WorkflowID    string `json:"workflowId"`
 		SubscriberPK  string `json:"subscriberPk"`
@@ -133,7 +128,7 @@ func (e *Engine) loadNotificationContext(ctx context.Context, job *domain.Job) (
 	if err != nil {
 		return nil, err
 	}
-	wf, err := e.store.GetWorkflow(ctx, meta.EnvID, meta.WorkflowID)
+	wf, err := e.store.GetWorkflow(ctx, meta.WorkflowID)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +144,6 @@ func (e *Engine) loadNotificationContext(ctx context.Context, job *domain.Job) (
 	}
 
 	return &JobContext{
-		EnvID:         meta.EnvID,
 		TransactionID: meta.TransactionID,
 		Workflow:      wf,
 		Notification:  notif,
@@ -161,7 +155,7 @@ func (e *Engine) loadNotificationContext(ctx context.Context, job *domain.Job) (
 func (e *Engine) execDelay(ctx context.Context, jc *JobContext, job *domain.Job) error {
 	if job.ScheduledAt != nil {
 		if time.Now().Before(*job.ScheduledAt) {
-			return e.queue.EnqueueJob(ctx, jc.EnvID, job.ID, job.ScheduledAt)
+			return e.queue.EnqueueJob(ctx, job.ID, job.ScheduledAt)
 		}
 		job.Status = domain.JobCompleted
 		return nil
@@ -173,7 +167,7 @@ func (e *Engine) execDelay(ctx context.Context, jc *JobContext, job *domain.Job)
 	if err := e.store.UpdateJob(ctx, job); err != nil {
 		return err
 	}
-	return e.queue.EnqueueJob(ctx, jc.EnvID, job.ID, &at)
+	return e.queue.EnqueueJob(ctx, job.ID, &at)
 }
 
 func (e *Engine) execDigest(ctx context.Context, jc *JobContext, job *domain.Job) error {
@@ -188,12 +182,11 @@ func (e *Engine) execDigest(ctx context.Context, jc *JobContext, job *domain.Job
 	eventPayload := template.ParsePayload(jc.Notification.Payload)
 	eventBytes, _ := json.Marshal(eventPayload)
 
-	bucket, err := e.store.GetDigestBucket(ctx, jc.EnvID, key, jc.Subscriber.ID)
+	bucket, err := e.store.GetDigestBucket(ctx, key, jc.Subscriber.ID)
 	if err != nil {
 		jobID := job.ID
 		events, _ := json.Marshal([]json.RawMessage{eventBytes})
 		bucket = &domain.DigestBucket{
-			EnvID:        jc.EnvID,
 			DigestKey:    key,
 			SubscriberPK: jc.Subscriber.ID,
 			WorkflowID:   jc.Workflow.ID,
@@ -206,7 +199,7 @@ func (e *Engine) execDigest(ctx context.Context, jc *JobContext, job *domain.Job
 		if err != nil {
 			return err
 		}
-		_ = e.queue.EnqueueDigestFlush(ctx, jc.EnvID, bucket.ID, job.ID, windowEnd)
+		_ = e.queue.EnqueueDigestFlush(ctx, bucket.ID, job.ID, windowEnd)
 	} else {
 		var events []json.RawMessage
 		_ = json.Unmarshal(bucket.Events, &events)
@@ -220,16 +213,16 @@ func (e *Engine) execDigest(ctx context.Context, jc *JobContext, job *domain.Job
 	return nil
 }
 
-func (e *Engine) FlushDigest(ctx context.Context, envID, bucketID, jobID string) error {
+func (e *Engine) FlushDigest(ctx context.Context, bucketID, jobID string) error {
 	if bucketID != "" {
 		if _, err := e.store.GetDigestBucketByID(ctx, bucketID); err != nil {
 			return err
 		}
 	}
-	return e.flushDigestByJob(ctx, envID, jobID)
+	return e.flushDigestByJob(ctx, jobID)
 }
 
-func (e *Engine) flushDigestByJob(ctx context.Context, envID, jobID string) error {
+func (e *Engine) flushDigestByJob(ctx context.Context, jobID string) error {
 	job, err := e.store.GetJob(ctx, jobID)
 	if err != nil {
 		return err
@@ -242,7 +235,7 @@ func (e *Engine) flushDigestByJob(ctx context.Context, envID, jobID string) erro
 	if key == "" {
 		key = jc.Workflow.TriggerID
 	}
-	bucket, err := e.store.GetDigestBucket(ctx, envID, key, jc.Subscriber.ID)
+	bucket, err := e.store.GetDigestBucket(ctx, key, jc.Subscriber.ID)
 	if err != nil {
 		return err
 	}
@@ -262,7 +255,7 @@ func (e *Engine) flushDigestByJob(ctx context.Context, envID, jobID string) erro
 		return e.store.UpdateJob(ctx, job)
 	}
 
-	rendered, err := e.renderStep(ctx, envID, nextStep, nextStep.Type.Channel(), renderCtx)
+	rendered, err := e.renderStep(ctx, nextStep, nextStep.Type.Channel(), renderCtx)
 	if err != nil {
 		return err
 	}
@@ -273,7 +266,7 @@ func (e *Engine) flushDigestByJob(ctx context.Context, envID, jobID string) erro
 		NotificationID: jc.Notification.ID,
 		Payload:        jc.Notification.Payload,
 	}
-	_, err = e.delivery.SendChannel(ctx, envID, nextStep.Type.Channel(), jc.Subscriber, rendered, &jid, sendCtx)
+	_, err = e.delivery.SendChannel(ctx, nextStep.Type.Channel(), jc.Subscriber, rendered, &jid, sendCtx)
 	if err != nil {
 		return err
 	}
@@ -297,7 +290,7 @@ func (e *Engine) nextChannelStep(wf *domain.Workflow, afterOrder int) *domain.Wo
 func (e *Engine) enqueueFollowingSteps(ctx context.Context, jc *JobContext, job *domain.Job) error {
 	next, err := e.store.GetNextJob(ctx, job.NotificationID, job.StepOrder)
 	if err == nil && next != nil {
-		return e.queue.EnqueueJob(ctx, jc.EnvID, next.ID, next.ScheduledAt)
+		return e.queue.EnqueueJob(ctx, next.ID, next.ScheduledAt)
 	}
 	if err != nil && !repository.IsNotFound(err) {
 		return err
@@ -356,7 +349,7 @@ func (e *Engine) execThrottle(ctx context.Context, jc *JobContext, job *domain.J
 	if window <= 0 {
 		window = 60
 	}
-	redisKey := fmt.Sprintf("throttle:%s:%s", jc.EnvID, key)
+	redisKey := fmt.Sprintf("throttle:%s", key)
 	count, err := e.incrThrottle(ctx, redisKey, time.Duration(window)*time.Second)
 	if err != nil {
 		return err
@@ -368,7 +361,7 @@ func (e *Engine) execThrottle(ctx context.Context, jc *JobContext, job *domain.J
 			job.Status = domain.JobDelayed
 			job.ScheduledAt = &at
 			_ = e.store.UpdateJob(ctx, job)
-			return e.queue.EnqueueJob(ctx, jc.EnvID, job.ID, &at)
+			return e.queue.EnqueueJob(ctx, job.ID, &at)
 		}
 		job.Status = domain.JobSkipped
 		return nil
@@ -389,7 +382,7 @@ func (e *Engine) execChannel(ctx context.Context, jc *JobContext, job *domain.Jo
 
 	stepMeta := map[string]any{}
 	renderCtx := delivery.BuildRenderContext(jc.Subscriber, jc.Notification.Payload, stepMeta)
-	rendered, err := e.renderStep(ctx, jc.EnvID, jc.Step, jc.Step.Type.Channel(), renderCtx)
+	rendered, err := e.renderStep(ctx, jc.Step, jc.Step.Type.Channel(), renderCtx)
 	if err != nil {
 		return err
 	}
@@ -400,14 +393,14 @@ func (e *Engine) execChannel(ctx context.Context, jc *JobContext, job *domain.Jo
 		NotificationID: jc.Notification.ID,
 		Payload:        jc.Notification.Payload,
 	}
-	_, err = e.delivery.SendChannel(ctx, jc.EnvID, jc.Step.Type.Channel(), jc.Subscriber, rendered, &jid, sendCtx)
+	_, err = e.delivery.SendChannel(ctx, jc.Step.Type.Channel(), jc.Subscriber, rendered, &jid, sendCtx)
 	return err
 }
 
-func (e *Engine) renderStep(ctx context.Context, envID string, step *domain.WorkflowStep, channel domain.ChannelType, renderCtx template.RenderContext) (*domain.MessageTemplate, error) {
+func (e *Engine) renderStep(ctx context.Context, step *domain.WorkflowStep, channel domain.ChannelType, renderCtx template.RenderContext) (*domain.MessageTemplate, error) {
 	src := step.Template
 	if step.TemplateID != "" {
-		stored, err := e.store.GetTemplate(ctx, envID, step.TemplateID)
+		stored, err := e.store.GetTemplate(ctx, step.TemplateID)
 		if err != nil {
 			if repository.IsNotFound(err) {
 				return nil, fmt.Errorf("template %s not found", step.TemplateID)
@@ -479,7 +472,6 @@ func (e *Engine) log(ctx context.Context, jc *JobContext, job *domain.Job, level
 	jid := job.ID
 	st := string(job.StepType)
 	_ = e.store.CreateExecutionLog(ctx, &domain.ExecutionLog{
-		EnvID:          jc.EnvID,
 		TransactionID:  jc.TransactionID,
 		NotificationID: &nid,
 		JobID:          &jid,

@@ -50,6 +50,7 @@ jobs:
       - name: Test (file store)
         env:
           DEV_MODE: "true"
+          API_KEY: test-key
           STORE_TYPE: file
           STORE_FILE_PATH: /tmp/herald-test-data
         run: go test ./... -count=1 -race
@@ -57,12 +58,15 @@ jobs:
       - name: Test (postgres gorm)
         env:
           DEV_MODE: "true"
+          API_KEY: test-key
           STORE_TYPE: db
           DB_DRIVER: postgres
           DATABASE_URL: postgres://herald:herald@localhost:5432/herald?sslmode=disable
         run: go test ./... -count=1
 
       - name: Build
+        env:
+          API_KEY: test-key
         run: |
           go build -o /tmp/herald-api ./cmd/api
           go build -o /tmp/herald-worker ./cmd/worker

@@ -29,6 +29,7 @@ const (
 
 type Config struct {
 	HTTPAddr        string
+	APIKey          string
 	StoreType       StoreType
 	DBDriver        DBDriver
 	DatabaseURL     string
@@ -96,8 +97,14 @@ func Load() (*Config, error) {
 		}
 	}
 
+	apiKey := os.Getenv("API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("API_KEY is required")
+	}
+
 	cfg := &Config{
 		HTTPAddr:           getEnv("HTTP_ADDR", ":8080"),
+		APIKey:             apiKey,
 		StoreType:          storeType,
 		DBDriver:           driver,
 		DatabaseURL:        dbURL,

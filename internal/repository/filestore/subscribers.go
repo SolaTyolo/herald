@@ -12,23 +12,23 @@ import (
 	"github.com/SolaTyolo/herald/internal/domain"
 )
 
-func (s *Store) subscribersDir(envID string) string {
-	return s.collection(envID, "subscribers")
+func (s *Store) subscribersDir() string {
+	return s.collection("subscribers")
 }
 
-func (s *Store) subscriberPath(envID, subscriberID string) string {
-	return filepath.Join(s.subscribersDir(envID), safeFilename(subscriberID)+".json")
+func (s *Store) subscriberPath(subscriberID string) string {
+	return filepath.Join(s.subscribersDir(), safeFilename(subscriberID)+".json")
 }
 
-func (s *Store) preferencesDir(envID string) string {
-	return s.collection(envID, "preferences")
+func (s *Store) preferencesDir() string {
+	return s.collection("preferences")
 }
 
-func (s *Store) preferencePath(envID, id string) string {
-	return filepath.Join(s.preferencesDir(envID), id+".json")
+func (s *Store) preferencePath(id string) string {
+	return filepath.Join(s.preferencesDir(), id+".json")
 }
 
-func (s *Store) UpsertSubscriber(ctx context.Context, envID string, sub *domain.Subscriber) error {
+func (s *Store) UpsertSubscriber(ctx context.Context, sub *domain.Subscriber) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -42,7 +42,7 @@ func (s *Store) UpsertSubscriber(ctx context.Context, envID string, sub *domain.
 		sub.ChatCredentials = json.RawMessage("{}")
 	}
 	now := time.Now()
-	path := s.subscriberPath(envID, sub.SubscriberID)
+	path := s.subscriberPath(sub.SubscriberID)
 	if existing, err := readSubscriberFile(path); err == nil {
 		sub.ID = existing.ID
 		sub.CreatedAt = existing.CreatedAt
@@ -56,7 +56,6 @@ func (s *Store) UpsertSubscriber(ctx context.Context, envID string, sub *domain.
 			sub.CreatedAt = now
 		}
 	}
-	sub.EnvID = envID
 	sub.UpdatedAt = now
 	return writeJSON(path, sub)
 }
@@ -69,44 +68,25 @@ func readSubscriberFile(path string) (*domain.Subscriber, error) {
 	return &sub, nil
 }
 
-func (s *Store) GetSubscriber(ctx context.Context, envID, subscriberID string) (*domain.Subscriber, error) {
+func (s *Store) GetSubscriber(ctx context.Context, subscriberID string) (*domain.Subscriber, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return readSubscriberFile(s.subscriberPath(envID, subscriberID))
+	return readSubscriberFile(s.subscriberPath(subscriberID))
 }
 
 func (s *Store) GetSubscriberByPK(ctx context.Context, pk string) (*domain.Subscriber, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	envIDs, err := s.listEnvIDs()
-	if err != nil {
-		return nil, err
-	}
-	for _, envID := range envIDs {
-		files, err := listJSONFiles(s.subscribersDir(envID))
-		if err != nil {
-			return nil, err
-		}
-		for _, path := range files {
-			sub, err := readSubscriberFile(path)
-			if err != nil {
-				return nil, err
-			}
-			if sub.ID == pk {
-				return sub, nil
-			}
-		}
-	}
-	return nil, ErrNotFound
+	return s.getSubscriberByPKLocked(pk)
 }
 
-func (s *Store) ListSubscribers(ctx context.Context, envID string, limit, offset int) ([]domain.Subscriber, error) {
+func (s *Store) ListSubscribers(ctx context.Context, limit, offset int) ([]domain.Subscriber, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	files, err := listJSONFiles(s.subscribersDir(envID))
+	files, err := listJSONFiles(s.subscribersDir())
 	if err != nil {
 		return nil, err
 	}
@@ -125,24 +105,24 @@ func (s *Store) ListSubscribers(ctx context.Context, envID string, limit, offset
 	return out, nil
 }
 
-func (s *Store) DeleteSubscriber(ctx context.Context, envID, subscriberID string) error {
+func (s *Store) DeleteSubscriber(ctx context.Context, subscriberID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return deleteFile(s.subscriberPath(envID, subscriberID))
+	return deleteFile(s.subscriberPath(subscriberID))
 }
 
-func (s *Store) SetPreference(ctx context.Context, envID, subscriberID string, pref domain.SubscriberPreference) error {
+func (s *Store) SetPreference(ctx context.Context, subscriberID string, pref domain.SubscriberPreference) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	sub, err := readSubscriberFile(s.subscriberPath(envID, subscriberID))
+	sub, err := readSubscriberFile(s.subscriberPath(subscriberID))
 	if err != nil {
 		return err
 	}
 	pref.SubscriberPK = sub.ID
 
-	files, err := listJSONFiles(s.preferencesDir(envID))
+	files, err := listJSONFiles(s.preferencesDir())
 	if err != nil {
 		return err
 	}
@@ -162,7 +142,7 @@ func (s *Store) SetPreference(ctx context.Context, envID, subscriberID string, p
 	}
 
 	pref.ID = uuid.NewString()
-	return writeJSON(s.preferencePath(envID, pref.ID), &pref)
+	return writeJSON(s.preferencePath(pref.ID), &pref)
 }
 
 func workflowIDEqual(a, b *string) bool {
@@ -179,31 +159,42 @@ func (s *Store) GetPreferences(ctx context.Context, subscriberPK string, workflo
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	envIDs, err := s.listEnvIDs()
+	files, err := listJSONFiles(s.preferencesDir())
 	if err != nil {
 		return nil, err
 	}
 	var out []domain.SubscriberPreference
-	for _, envID := range envIDs {
-		files, err := listJSONFiles(s.preferencesDir(envID))
+	for _, path := range files {
+		var pref domain.SubscriberPreference
+		if err := readJSON(path, &pref); err != nil {
+			return nil, err
+		}
+		if pref.SubscriberPK != subscriberPK {
+			continue
+		}
+		if workflowID != nil {
+			if pref.WorkflowID == nil || *pref.WorkflowID != *workflowID {
+				continue
+			}
+		}
+		out = append(out, pref)
+	}
+	return out, nil
+}
+
+func (s *Store) getSubscriberByPKLocked(pk string) (*domain.Subscriber, error) {
+	files, err := listJSONFiles(s.subscribersDir())
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range files {
+		sub, err := readSubscriberFile(path)
 		if err != nil {
 			return nil, err
 		}
-		for _, path := range files {
-			var pref domain.SubscriberPreference
-			if err := readJSON(path, &pref); err != nil {
-				return nil, err
-			}
-			if pref.SubscriberPK != subscriberPK {
-				continue
-			}
-			if workflowID != nil {
-				if pref.WorkflowID == nil || *pref.WorkflowID != *workflowID {
-					continue
-				}
-			}
-			out = append(out, pref)
+		if sub.ID == pk {
+			return sub, nil
 		}
 	}
-	return out, nil
+	return nil, ErrNotFound
 }

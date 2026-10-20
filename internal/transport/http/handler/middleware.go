@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"context"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 	"time"
@@ -9,11 +9,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/SolaTyolo/herald/internal/repository"
 	"github.com/SolaTyolo/herald/internal/telemetry"
 )
 
-func AuthMiddleware(store repository.Store) func(http.Handler) http.Handler {
+func AuthMiddleware(apiKey string) func(http.Handler) http.Handler {
+	expected := []byte(apiKey)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/health" {
@@ -30,19 +30,17 @@ func AuthMiddleware(store repository.Store) func(http.Handler) http.Handler {
 				return
 			}
 			key := strings.TrimPrefix(auth, "Bearer ")
-			env, err := store.ValidateAPIKey(r.Context(), key)
-			if err != nil {
+			if subtle.ConstantTimeCompare([]byte(key), expected) != 1 {
 				writeError(w, http.StatusUnauthorized, "invalid api key")
 				return
 			}
-			ctx := context.WithValue(r.Context(), envKey{}, env.ID)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			next.ServeHTTP(w, r)
 		})
 	}
 }
 
-func Mount(r chi.Router, store repository.Store, api *API) {
-	r.Use(AuthMiddleware(store))
+func Mount(r chi.Router, api *API) {
+	r.Use(AuthMiddleware(api.cfg.APIKey))
 	api.Routes(r)
 }
 

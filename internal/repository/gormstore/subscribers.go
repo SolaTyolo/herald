@@ -12,7 +12,7 @@ import (
 	"github.com/SolaTyolo/herald/internal/domain"
 )
 
-func (s *Store) UpsertSubscriber(ctx context.Context, envID string, sub *domain.Subscriber) error {
+func (s *Store) UpsertSubscriber(ctx context.Context, sub *domain.Subscriber) error {
 	if sub.Data == nil {
 		sub.Data = json.RawMessage("{}")
 	}
@@ -26,14 +26,13 @@ func (s *Store) UpsertSubscriber(ctx context.Context, envID string, sub *domain.
 	if sub.ID == "" {
 		sub.ID = uuid.NewString()
 	}
-	sub.EnvID = envID
 	sub.UpdatedAt = now
 	if sub.CreatedAt.IsZero() {
 		sub.CreatedAt = now
 	}
 	m := subscriberModelFromDomain(sub)
 	return s.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "env_id"}, {Name: "subscriber_id"}},
+		Columns: []clause.Column{{Name: "subscriber_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"email", "phone", "first_name", "last_name", "locale", "data",
 			"device_tokens", "chat_credentials", "webhook_url", "updated_at",
@@ -41,9 +40,9 @@ func (s *Store) UpsertSubscriber(ctx context.Context, envID string, sub *domain.
 	}).Create(&m).Error
 }
 
-func (s *Store) GetSubscriber(ctx context.Context, envID, subscriberID string) (*domain.Subscriber, error) {
+func (s *Store) GetSubscriber(ctx context.Context, subscriberID string) (*domain.Subscriber, error) {
 	var m subscriberModel
-	err := s.db.WithContext(ctx).Where("env_id = ? AND subscriber_id = ?", envID, subscriberID).First(&m).Error
+	err := s.db.WithContext(ctx).Where("subscriber_id = ?", subscriberID).First(&m).Error
 	if err != nil {
 		return nil, err
 	}
@@ -59,9 +58,9 @@ func (s *Store) GetSubscriberByPK(ctx context.Context, pk string) (*domain.Subsc
 	return m.toDomain()
 }
 
-func (s *Store) ListSubscribers(ctx context.Context, envID string, limit, offset int) ([]domain.Subscriber, error) {
+func (s *Store) ListSubscribers(ctx context.Context, limit, offset int) ([]domain.Subscriber, error) {
 	var rows []subscriberModel
-	if err := s.db.WithContext(ctx).Where("env_id = ?", envID).
+	if err := s.db.WithContext(ctx).
 		Order("created_at DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -76,8 +75,8 @@ func (s *Store) ListSubscribers(ctx context.Context, envID string, limit, offset
 	return out, nil
 }
 
-func (s *Store) DeleteSubscriber(ctx context.Context, envID, subscriberID string) error {
-	res := s.db.WithContext(ctx).Where("env_id = ? AND subscriber_id = ?", envID, subscriberID).Delete(&subscriberModel{})
+func (s *Store) DeleteSubscriber(ctx context.Context, subscriberID string) error {
+	res := s.db.WithContext(ctx).Where("subscriber_id = ?", subscriberID).Delete(&subscriberModel{})
 	if res.Error != nil {
 		return res.Error
 	}
@@ -87,8 +86,8 @@ func (s *Store) DeleteSubscriber(ctx context.Context, envID, subscriberID string
 	return nil
 }
 
-func (s *Store) SetPreference(ctx context.Context, envID, subscriberID string, pref domain.SubscriberPreference) error {
-	sub, err := s.GetSubscriber(ctx, envID, subscriberID)
+func (s *Store) SetPreference(ctx context.Context, subscriberID string, pref domain.SubscriberPreference) error {
+	sub, err := s.GetSubscriber(ctx, subscriberID)
 	if err != nil {
 		return err
 	}

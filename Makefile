@@ -4,23 +4,26 @@ DATABASE_URL ?= postgres://herald:herald@localhost:5432/herald?sslmode=disable
 REDIS_ADDR ?= localhost:6379
 HTTP_ADDR ?= :8080
 DEV_MODE ?= true
+API_KEY ?= herald-dev-key
 STORE_TYPE ?= db
 DB_DRIVER ?= postgres
 STORE_FILE_PATH ?= ./data
 
 PROVIDERS_CONFIG ?= ./config/providers.yaml
 
-export DATABASE_URL REDIS_ADDR HTTP_ADDR DEV_MODE
+export DATABASE_URL REDIS_ADDR HTTP_ADDR DEV_MODE API_KEY
 export STORE_TYPE DB_DRIVER STORE_FILE_PATH PROVIDERS_CONFIG
 
+COMPOSE := docker compose -f deploy/docker-compose.yml --env-file .env
+
 docker-up:
-	docker compose -f deploy/docker-compose.yml up -d
+	$(COMPOSE) up -d
 
 docker-down:
-	docker compose -f deploy/docker-compose.yml --profile app down
+	$(COMPOSE) --profile app down
 
 docker-app:
-	docker compose -f deploy/docker-compose.yml --profile app up -d --build
+	$(COMPOSE) --profile app up -d --build
 
 build:
 	go build -o bin/herald-api ./cmd/api

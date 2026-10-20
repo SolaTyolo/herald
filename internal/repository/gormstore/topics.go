@@ -11,26 +11,25 @@ import (
 	"github.com/SolaTyolo/herald/internal/domain"
 )
 
-func (s *Store) CreateTopic(ctx context.Context, envID string, topic *domain.Topic) error {
+func (s *Store) CreateTopic(ctx context.Context, topic *domain.Topic) error {
 	topic.ID = uuid.NewString()
-	topic.EnvID = envID
 	topic.CreatedAt = time.Now()
-	m := topicModel{ID: topic.ID, EnvID: envID, TopicKey: topic.TopicKey, Name: topic.Name, CreatedAt: topic.CreatedAt}
+	m := topicModel{ID: topic.ID, TopicKey: topic.TopicKey, Name: topic.Name, CreatedAt: topic.CreatedAt}
 	return s.db.WithContext(ctx).Create(&m).Error
 }
 
-func (s *Store) GetTopic(ctx context.Context, envID, topicKey string) (*domain.Topic, error) {
+func (s *Store) GetTopic(ctx context.Context, topicKey string) (*domain.Topic, error) {
 	var m topicModel
-	err := s.db.WithContext(ctx).Where("env_id = ? AND topic_key = ?", envID, topicKey).First(&m).Error
+	err := s.db.WithContext(ctx).Where("topic_key = ?", topicKey).First(&m).Error
 	if err != nil {
 		return nil, err
 	}
 	return m.toDomain()
 }
 
-func (s *Store) ListTopics(ctx context.Context, envID string) ([]domain.Topic, error) {
+func (s *Store) ListTopics(ctx context.Context) ([]domain.Topic, error) {
 	var rows []topicModel
-	if err := s.db.WithContext(ctx).Where("env_id = ?", envID).Find(&rows).Error; err != nil {
+	if err := s.db.WithContext(ctx).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make([]domain.Topic, 0, len(rows))
@@ -41,8 +40,8 @@ func (s *Store) ListTopics(ctx context.Context, envID string) ([]domain.Topic, e
 	return out, nil
 }
 
-func (s *Store) DeleteTopic(ctx context.Context, envID, topicKey string) error {
-	res := s.db.WithContext(ctx).Where("env_id = ? AND topic_key = ?", envID, topicKey).Delete(&topicModel{})
+func (s *Store) DeleteTopic(ctx context.Context, topicKey string) error {
+	res := s.db.WithContext(ctx).Where("topic_key = ?", topicKey).Delete(&topicModel{})
 	if res.Error != nil {
 		return res.Error
 	}
@@ -52,12 +51,12 @@ func (s *Store) DeleteTopic(ctx context.Context, envID, topicKey string) error {
 	return nil
 }
 
-func (s *Store) AddTopicSubscription(ctx context.Context, envID, topicKey, subscriberID string) error {
-	topic, err := s.GetTopic(ctx, envID, topicKey)
+func (s *Store) AddTopicSubscription(ctx context.Context, topicKey, subscriberID string) error {
+	topic, err := s.GetTopic(ctx, topicKey)
 	if err != nil {
 		return err
 	}
-	sub, err := s.GetSubscriber(ctx, envID, subscriberID)
+	sub, err := s.GetSubscriber(ctx, subscriberID)
 	if err != nil {
 		return err
 	}
@@ -67,12 +66,12 @@ func (s *Store) AddTopicSubscription(ctx context.Context, envID, topicKey, subsc
 	return s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&m).Error
 }
 
-func (s *Store) RemoveTopicSubscription(ctx context.Context, envID, topicKey, subscriberID string) error {
-	topic, err := s.GetTopic(ctx, envID, topicKey)
+func (s *Store) RemoveTopicSubscription(ctx context.Context, topicKey, subscriberID string) error {
+	topic, err := s.GetTopic(ctx, topicKey)
 	if err != nil {
 		return err
 	}
-	sub, err := s.GetSubscriber(ctx, envID, subscriberID)
+	sub, err := s.GetSubscriber(ctx, subscriberID)
 	if err != nil {
 		return err
 	}

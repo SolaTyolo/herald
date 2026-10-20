@@ -19,7 +19,7 @@ func NewTemplateService(store repository.Store) *TemplateService {
 	return &TemplateService{store: store}
 }
 
-func (s *TemplateService) Create(ctx context.Context, envID string, tmpl *domain.NotificationTemplate) error {
+func (s *TemplateService) Create(ctx context.Context, tmpl *domain.NotificationTemplate) error {
 	tmpl.Name = strings.TrimSpace(tmpl.Name)
 	if tmpl.Name == "" {
 		return fmt.Errorf("name required")
@@ -30,45 +30,45 @@ func (s *TemplateService) Create(ctx context.Context, envID string, tmpl *domain
 	if tmpl.Generation != domain.TemplateGenerationDynamic {
 		return fmt.Errorf("generation must be %s", domain.TemplateGenerationDynamic)
 	}
-	return s.store.CreateTemplate(ctx, envID, tmpl)
+	return s.store.CreateTemplate(ctx, tmpl)
 }
 
-func (s *TemplateService) Get(ctx context.Context, envID, id string) (*domain.NotificationTemplate, error) {
-	return s.store.GetTemplate(ctx, envID, id)
+func (s *TemplateService) Get(ctx context.Context, id string) (*domain.NotificationTemplate, error) {
+	return s.store.GetTemplate(ctx, id)
 }
 
-func (s *TemplateService) List(ctx context.Context, envID string) ([]domain.NotificationTemplate, error) {
-	return s.store.ListTemplates(ctx, envID)
+func (s *TemplateService) List(ctx context.Context) ([]domain.NotificationTemplate, error) {
+	return s.store.ListTemplates(ctx)
 }
 
-func (s *TemplateService) Update(ctx context.Context, envID string, tmpl *domain.NotificationTemplate) error {
+func (s *TemplateService) Update(ctx context.Context, tmpl *domain.NotificationTemplate) error {
 	tmpl.Name = strings.TrimSpace(tmpl.Name)
 	if tmpl.Name == "" {
 		return fmt.Errorf("name required")
 	}
-	return s.store.UpdateTemplate(ctx, envID, tmpl)
+	return s.store.UpdateTemplate(ctx, tmpl)
 }
 
-func (s *TemplateService) Delete(ctx context.Context, envID, id string) error {
-	return s.store.DeleteTemplate(ctx, envID, id)
+func (s *TemplateService) Delete(ctx context.Context, id string) error {
+	return s.store.DeleteTemplate(ctx, id)
 }
 
-func (s *TemplateService) CreateVersion(ctx context.Context, envID, templateID string, ver *domain.TemplateVersion) error {
+func (s *TemplateService) CreateVersion(ctx context.Context, templateID string, ver *domain.TemplateVersion) error {
 	if err := validateVersion(ver); err != nil {
 		return err
 	}
-	return s.store.CreateTemplateVersion(ctx, envID, templateID, ver)
+	return s.store.CreateTemplateVersion(ctx, templateID, ver)
 }
 
-func (s *TemplateService) UpdateVersion(ctx context.Context, envID, templateID string, ver *domain.TemplateVersion) error {
+func (s *TemplateService) UpdateVersion(ctx context.Context, templateID string, ver *domain.TemplateVersion) error {
 	if err := validateVersion(ver); err != nil {
 		return err
 	}
-	return s.store.UpdateTemplateVersion(ctx, envID, templateID, ver)
+	return s.store.UpdateTemplateVersion(ctx, templateID, ver)
 }
 
-func (s *TemplateService) DeleteVersion(ctx context.Context, envID, templateID, versionID string) error {
-	return s.store.DeleteTemplateVersion(ctx, envID, templateID, versionID)
+func (s *TemplateService) DeleteVersion(ctx context.Context, templateID, versionID string) error {
+	return s.store.DeleteTemplateVersion(ctx, templateID, versionID)
 }
 
 type TemplatePreview struct {
@@ -77,8 +77,8 @@ type TemplatePreview struct {
 	PlainContent string `json:"plainContent"`
 }
 
-func (s *TemplateService) Preview(ctx context.Context, envID, templateID, versionID string, data, subscriber map[string]any) (*TemplatePreview, error) {
-	tmpl, err := s.store.GetTemplate(ctx, envID, templateID)
+func (s *TemplateService) Preview(ctx context.Context, templateID, versionID string, data, subscriber map[string]any) (*TemplatePreview, error) {
+	tmpl, err := s.store.GetTemplate(ctx, templateID)
 	if err != nil {
 		return nil, err
 	}

@@ -18,14 +18,8 @@ func TestSendChannelIdempotentByJobID(t *testing.T) {
 	}
 	defer store.Close()
 
-	env, _, err := store.EnsureDefaultTenant(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	jobID := "job-idem-1"
 	existing := &domain.Message{
-		EnvID:        env.ID,
 		JobID:        &jobID,
 		SubscriberPK: "sub-1",
 		Channel:      domain.ChannelEmail,
@@ -49,7 +43,7 @@ providers:
 		t.Fatal(err)
 	}
 	svc := delivery.New(store, routing.NewTable("mem", snap), nil, delivery.Options{})
-	got, err := svc.SendChannel(context.Background(), env.ID, domain.ChannelEmail, &domain.Subscriber{ID: "sub-1"}, &domain.MessageTemplate{Content: "new"}, &jobID, nil)
+	got, err := svc.SendChannel(context.Background(), domain.ChannelEmail, &domain.Subscriber{ID: "sub-1"}, &domain.MessageTemplate{Content: "new"}, &jobID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

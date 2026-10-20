@@ -10,23 +10,22 @@ import (
 	"github.com/SolaTyolo/herald/internal/domain"
 )
 
-func (s *Store) CreateTemplate(ctx context.Context, envID string, tmpl *domain.NotificationTemplate) error {
+func (s *Store) CreateTemplate(ctx context.Context, tmpl *domain.NotificationTemplate) error {
 	now := time.Now()
 	tmpl.ID = uuid.NewString()
-	tmpl.EnvID = envID
 	tmpl.CreatedAt, tmpl.UpdatedAt = now, now
 	if tmpl.Generation == "" {
 		tmpl.Generation = domain.TemplateGenerationDynamic
 	}
 	return s.db.WithContext(ctx).Create(&notificationTemplateModel{
-		ID: tmpl.ID, EnvID: envID, Name: tmpl.Name, Generation: tmpl.Generation,
+		ID: tmpl.ID, Name: tmpl.Name, Generation: tmpl.Generation,
 		CreatedAt: tmpl.CreatedAt, UpdatedAt: tmpl.UpdatedAt,
 	}).Error
 }
 
-func (s *Store) GetTemplate(ctx context.Context, envID, id string) (*domain.NotificationTemplate, error) {
+func (s *Store) GetTemplate(ctx context.Context, id string) (*domain.NotificationTemplate, error) {
 	var m notificationTemplateModel
-	if err := s.db.WithContext(ctx).Where("id = ? AND env_id = ?", id, envID).First(&m).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("id = ?", id).First(&m).Error; err != nil {
 		return nil, err
 	}
 	tmpl := m.toDomain()
@@ -38,9 +37,9 @@ func (s *Store) GetTemplate(ctx context.Context, envID, id string) (*domain.Noti
 	return tmpl, nil
 }
 
-func (s *Store) ListTemplates(ctx context.Context, envID string) ([]domain.NotificationTemplate, error) {
+func (s *Store) ListTemplates(ctx context.Context) ([]domain.NotificationTemplate, error) {
 	var rows []notificationTemplateModel
-	if err := s.db.WithContext(ctx).Where("env_id = ?", envID).Order("updated_at DESC").Find(&rows).Error; err != nil {
+	if err := s.db.WithContext(ctx).Order("updated_at DESC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make([]domain.NotificationTemplate, 0, len(rows))
@@ -56,10 +55,10 @@ func (s *Store) ListTemplates(ctx context.Context, envID string) ([]domain.Notif
 	return out, nil
 }
 
-func (s *Store) UpdateTemplate(ctx context.Context, envID string, tmpl *domain.NotificationTemplate) error {
+func (s *Store) UpdateTemplate(ctx context.Context, tmpl *domain.NotificationTemplate) error {
 	tmpl.UpdatedAt = time.Now()
 	res := s.db.WithContext(ctx).Model(&notificationTemplateModel{}).
-		Where("id = ? AND env_id = ?", tmpl.ID, envID).
+		Where("id = ?", tmpl.ID).
 		Updates(map[string]any{"name": tmpl.Name, "updated_at": tmpl.UpdatedAt})
 	if res.Error != nil {
 		return res.Error
@@ -70,9 +69,9 @@ func (s *Store) UpdateTemplate(ctx context.Context, envID string, tmpl *domain.N
 	return nil
 }
 
-func (s *Store) DeleteTemplate(ctx context.Context, envID, id string) error {
+func (s *Store) DeleteTemplate(ctx context.Context, id string) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		res := tx.Where("id = ? AND env_id = ?", id, envID).Delete(&notificationTemplateModel{})
+		res := tx.Where("id = ?", id).Delete(&notificationTemplateModel{})
 		if res.Error != nil {
 			return res.Error
 		}
@@ -83,10 +82,10 @@ func (s *Store) DeleteTemplate(ctx context.Context, envID, id string) error {
 	})
 }
 
-func (s *Store) CreateTemplateVersion(ctx context.Context, envID, templateID string, ver *domain.TemplateVersion) error {
+func (s *Store) CreateTemplateVersion(ctx context.Context, templateID string, ver *domain.TemplateVersion) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var parent notificationTemplateModel
-		if err := tx.Where("id = ? AND env_id = ?", templateID, envID).First(&parent).Error; err != nil {
+		if err := tx.Where("id = ?", templateID).First(&parent).Error; err != nil {
 			return err
 		}
 		now := time.Now()
@@ -116,10 +115,10 @@ func (s *Store) CreateTemplateVersion(ctx context.Context, envID, templateID str
 	})
 }
 
-func (s *Store) UpdateTemplateVersion(ctx context.Context, envID, templateID string, ver *domain.TemplateVersion) error {
+func (s *Store) UpdateTemplateVersion(ctx context.Context, templateID string, ver *domain.TemplateVersion) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var parent notificationTemplateModel
-		if err := tx.Where("id = ? AND env_id = ?", templateID, envID).First(&parent).Error; err != nil {
+		if err := tx.Where("id = ?", templateID).First(&parent).Error; err != nil {
 			return err
 		}
 		var existing templateVersionModel
@@ -148,10 +147,10 @@ func (s *Store) UpdateTemplateVersion(ctx context.Context, envID, templateID str
 	})
 }
 
-func (s *Store) DeleteTemplateVersion(ctx context.Context, envID, templateID, versionID string) error {
+func (s *Store) DeleteTemplateVersion(ctx context.Context, templateID, versionID string) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var parent notificationTemplateModel
-		if err := tx.Where("id = ? AND env_id = ?", templateID, envID).First(&parent).Error; err != nil {
+		if err := tx.Where("id = ?", templateID).First(&parent).Error; err != nil {
 			return err
 		}
 		var existing templateVersionModel

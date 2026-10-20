@@ -99,12 +99,6 @@ func (a *API) Routes(r chi.Router) {
 	r.Get("/health", a.health)
 }
 
-func envID(r *http.Request) string {
-	return r.Context().Value(envKey{}).(string)
-}
-
-type envKey struct{}
-
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

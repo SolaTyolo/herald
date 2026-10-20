@@ -54,8 +54,10 @@ make run-worker   # 终端 2
 
 ## 认证
 
+在 `.env` 中设置必填的 `API_KEY`，请求头：
+
 ```
-Authorization: Bearer <your-key>
+Authorization: Bearer <API_KEY>
 ```
 
 ## 示例
@@ -103,6 +105,7 @@ pkg/contract/          投递契约（用户 Worker 按此实现）
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
+| `API_KEY` | —（必填） | REST Bearer 鉴权 |
 | `DEV_MODE` | `false` | 本地开发 |
 | `HTTP_ADDR` | `:8080` | API 监听 |
 | `SMTP_HOST` / `SMTP_FROM` | — | 内置邮件凭据 |

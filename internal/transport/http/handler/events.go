@@ -13,7 +13,7 @@ func (a *API) triggerEvent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	resp, err := a.trigger.Trigger(r.Context(), envID(r), &req)
+	resp, err := a.trigger.Trigger(r.Context(), &req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

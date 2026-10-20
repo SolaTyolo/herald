@@ -98,9 +98,18 @@ func defaultSMTPSender(ctx context.Context, cfg contract.ProviderConfig, msg con
 
 	addr := net.JoinHostPort(host, port)
 	body := buildMIME(from, to, subject, msg.Content)
+	tlsCfg := &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}
+	netDialer := &net.Dialer{Timeout: timeout}
 
-	dialer := &net.Dialer{Timeout: timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	var conn net.Conn
+	var err error
+	// Port 465 is SMTPS (implicit TLS). 587/25 use plain dial + optional STARTTLS.
+	if port == "465" {
+		d := &tls.Dialer{NetDialer: netDialer, Config: tlsCfg}
+		conn, err = d.DialContext(ctx, "tcp", addr)
+	} else {
+		conn, err = netDialer.DialContext(ctx, "tcp", addr)
+	}
 	if err != nil {
 		return contract.Fail("smtp_network", err.Error(), true)
 	}
@@ -113,10 +122,11 @@ func defaultSMTPSender(ctx context.Context, cfg contract.ProviderConfig, msg con
 	}
 	defer func() { _ = client.Close() }()
 
-	if ok, _ := client.Extension("STARTTLS"); ok {
-		tlsCfg := &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}
-		if err := client.StartTLS(tlsCfg); err != nil {
-			return contract.Fail("smtp_tls", err.Error(), true)
+	if port != "465" {
+		if ok, _ := client.Extension("STARTTLS"); ok {
+			if err := client.StartTLS(tlsCfg); err != nil {
+				return contract.Fail("smtp_tls", err.Error(), true)
+			}
 		}
 	}
 

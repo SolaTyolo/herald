@@ -11,21 +11,20 @@ import (
 	"github.com/SolaTyolo/herald/internal/domain"
 )
 
-func (s *Store) templatesDir(envID string) string {
-	return s.collection(envID, "templates")
+func (s *Store) templatesDir() string {
+	return s.collection("templates")
 }
 
-func (s *Store) templatePath(envID, id string) string {
-	return filepath.Join(s.templatesDir(envID), id+".json")
+func (s *Store) templatePath(id string) string {
+	return filepath.Join(s.templatesDir(), id+".json")
 }
 
-func (s *Store) CreateTemplate(ctx context.Context, envID string, tmpl *domain.NotificationTemplate) error {
+func (s *Store) CreateTemplate(ctx context.Context, tmpl *domain.NotificationTemplate) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now()
 	tmpl.ID = uuid.NewString()
-	tmpl.EnvID = envID
 	tmpl.CreatedAt, tmpl.UpdatedAt = now, now
 	if tmpl.Generation == "" {
 		tmpl.Generation = domain.TemplateGenerationDynamic
@@ -33,20 +32,20 @@ func (s *Store) CreateTemplate(ctx context.Context, envID string, tmpl *domain.N
 	if tmpl.Versions == nil {
 		tmpl.Versions = []domain.TemplateVersion{}
 	}
-	return writeJSON(s.templatePath(envID, tmpl.ID), tmpl)
+	return writeJSON(s.templatePath(tmpl.ID), tmpl)
 }
 
-func (s *Store) GetTemplate(ctx context.Context, envID, id string) (*domain.NotificationTemplate, error) {
+func (s *Store) GetTemplate(ctx context.Context, id string) (*domain.NotificationTemplate, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.readTemplate(envID, id)
+	return s.readTemplate(id)
 }
 
-func (s *Store) ListTemplates(ctx context.Context, envID string) ([]domain.NotificationTemplate, error) {
+func (s *Store) ListTemplates(ctx context.Context) ([]domain.NotificationTemplate, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	files, err := listJSONFiles(s.templatesDir(envID))
+	files, err := listJSONFiles(s.templatesDir())
 	if err != nil {
 		return nil, err
 	}
@@ -64,35 +63,34 @@ func (s *Store) ListTemplates(ctx context.Context, envID string) ([]domain.Notif
 	return out, nil
 }
 
-func (s *Store) UpdateTemplate(ctx context.Context, envID string, tmpl *domain.NotificationTemplate) error {
+func (s *Store) UpdateTemplate(ctx context.Context, tmpl *domain.NotificationTemplate) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	existing, err := s.readTemplate(envID, tmpl.ID)
+	existing, err := s.readTemplate(tmpl.ID)
 	if err != nil {
 		return err
 	}
 	existing.Name = tmpl.Name
 	existing.UpdatedAt = time.Now()
 	tmpl.UpdatedAt = existing.UpdatedAt
-	tmpl.EnvID = existing.EnvID
 	tmpl.Generation = existing.Generation
 	tmpl.CreatedAt = existing.CreatedAt
 	tmpl.Versions = existing.Versions
-	return writeJSON(s.templatePath(envID, tmpl.ID), existing)
+	return writeJSON(s.templatePath(tmpl.ID), existing)
 }
 
-func (s *Store) DeleteTemplate(ctx context.Context, envID, id string) error {
+func (s *Store) DeleteTemplate(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return deleteFile(s.templatePath(envID, id))
+	return deleteFile(s.templatePath(id))
 }
 
-func (s *Store) CreateTemplateVersion(ctx context.Context, envID, templateID string, ver *domain.TemplateVersion) error {
+func (s *Store) CreateTemplateVersion(ctx context.Context, templateID string, ver *domain.TemplateVersion) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	tmpl, err := s.readTemplate(envID, templateID)
+	tmpl, err := s.readTemplate(templateID)
 	if err != nil {
 		return err
 	}
@@ -112,14 +110,14 @@ func (s *Store) CreateTemplateVersion(ctx context.Context, envID, templateID str
 	}
 	tmpl.Versions = append(tmpl.Versions, *ver)
 	tmpl.UpdatedAt = now
-	return writeJSON(s.templatePath(envID, templateID), tmpl)
+	return writeJSON(s.templatePath(templateID), tmpl)
 }
 
-func (s *Store) UpdateTemplateVersion(ctx context.Context, envID, templateID string, ver *domain.TemplateVersion) error {
+func (s *Store) UpdateTemplateVersion(ctx context.Context, templateID string, ver *domain.TemplateVersion) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	tmpl, err := s.readTemplate(envID, templateID)
+	tmpl, err := s.readTemplate(templateID)
 	if err != nil {
 		return err
 	}
@@ -143,14 +141,14 @@ func (s *Store) UpdateTemplateVersion(ctx context.Context, envID, templateID str
 	}
 	tmpl.Versions[idx] = *ver
 	tmpl.UpdatedAt = now
-	return writeJSON(s.templatePath(envID, templateID), tmpl)
+	return writeJSON(s.templatePath(templateID), tmpl)
 }
 
-func (s *Store) DeleteTemplateVersion(ctx context.Context, envID, templateID, versionID string) error {
+func (s *Store) DeleteTemplateVersion(ctx context.Context, templateID, versionID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	tmpl, err := s.readTemplate(envID, templateID)
+	tmpl, err := s.readTemplate(templateID)
 	if err != nil {
 		return err
 	}
@@ -164,12 +162,12 @@ func (s *Store) DeleteTemplateVersion(ctx context.Context, envID, templateID, ve
 		tmpl.Versions[len(tmpl.Versions)-1].Active = true
 	}
 	tmpl.UpdatedAt = time.Now()
-	return writeJSON(s.templatePath(envID, templateID), tmpl)
+	return writeJSON(s.templatePath(templateID), tmpl)
 }
 
-func (s *Store) readTemplate(envID, id string) (*domain.NotificationTemplate, error) {
+func (s *Store) readTemplate(id string) (*domain.NotificationTemplate, error) {
 	var tmpl domain.NotificationTemplate
-	if err := readJSON(s.templatePath(envID, id), &tmpl); err != nil {
+	if err := readJSON(s.templatePath(id), &tmpl); err != nil {
 		return nil, err
 	}
 	return &tmpl, nil

@@ -12,7 +12,7 @@ func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
 	unread := r.URL.Query().Get("read") == "false"
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	items, err := a.messages.List(r.Context(), envID(r), chi.URLParam(r, "subscriberId"), unread, limit, offset)
+	items, err := a.messages.List(r.Context(), chi.URLParam(r, "subscriberId"), unread, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -29,7 +29,7 @@ func (a *API) patchMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	msg, err := a.messages.Update(r.Context(), envID(r), chi.URLParam(r, "subscriberId"), chi.URLParam(r, "messageId"), body.Read, body.Archived)
+	msg, err := a.messages.Update(r.Context(), chi.URLParam(r, "subscriberId"), chi.URLParam(r, "messageId"), body.Read, body.Archived)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

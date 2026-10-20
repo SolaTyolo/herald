@@ -9,6 +9,7 @@ alwaysApply: true
 - Channel providers: Traefik-style YAML routing; builtin only `smtp_email` / `inapp`; other channels are user-implemented remote HTTP workers (`POST /delivery`). Do not add in-process plugin runtimes.
 - `cmd/api` and `cmd/worker` must NOT import user provider implementations.
 - Delivery: `routing.Table.ProvidersForChannel` + builtin SMTP (`SMTP_*` env) / inapp; remote → `POST /delivery` + Redis result queue (default) or sync HTTP body. Remote secrets stay in the worker.
+- Auth: required env `API_KEY`; `Authorization: Bearer` constant-time compare. No Tenant/Environment/`env_id` — single global data namespace.
 - Persistence: `repository.Store` via `repository.Open()` — business layers use the Store port only.
 - Missing records: use `repository.IsNotFound(err)`.
 - `QUEUE_MODE=local` runs jobs in-process and does not use Redis. `QUEUE_MODE=asynq` splits `RoleAPI` (migrations, bridge subscriber) and `RoleWorker` (Asynq); both share `PROVIDERS_CONFIG` and `REDIS_ADDR`.

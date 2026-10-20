@@ -16,7 +16,7 @@ make playground
 # open http://localhost:8090
 ```
 
-Paste the default API key from the API log. The playground process proxies `/v1/*` and `/health` to `HERALD_API` (default `http://localhost:8080`).
+Paste the same value as process env `API_KEY` (see `.env` / `make` default `herald-dev-key`). The playground proxies `/v1/*` and `/health` to `HERALD_API` (default `http://localhost:8080`).
 
 | Variable / flag | Default | Meaning |
 |-----------------|---------|---------|

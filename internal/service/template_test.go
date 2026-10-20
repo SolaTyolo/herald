@@ -19,7 +19,7 @@ func TestTemplateVersionsAndPreview(t *testing.T) {
 	ctx := context.Background()
 
 	tmpl := &domain.NotificationTemplate{Name: "order-shipped"}
-	if err := svc.Create(ctx, "env-1", tmpl); err != nil {
+	if err := svc.Create(ctx, tmpl); err != nil {
 		t.Fatal(err)
 	}
 
@@ -30,7 +30,7 @@ func TestTemplateVersionsAndPreview(t *testing.T) {
 		PlainContent: "{{.subscriber.firstName}} {{.orderId}}",
 		TestData:     []byte(`{"orderId":"100"}`),
 	}
-	if err := svc.CreateVersion(ctx, "env-1", tmpl.ID, first); err != nil {
+	if err := svc.CreateVersion(ctx, tmpl.ID, first); err != nil {
 		t.Fatal(err)
 	}
 	if !first.Active {
@@ -44,11 +44,11 @@ func TestTemplateVersionsAndPreview(t *testing.T) {
 		PlainContent:       "shipped",
 		ProviderTemplateID: "d-sendgrid",
 	}
-	if err := svc.CreateVersion(ctx, "env-1", tmpl.ID, second); err != nil {
+	if err := svc.CreateVersion(ctx, tmpl.ID, second); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := svc.Get(ctx, "env-1", tmpl.ID)
+	got, err := svc.Get(ctx, tmpl.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestTemplateVersionsAndPreview(t *testing.T) {
 		t.Fatal("v1 should be inactive")
 	}
 
-	preview, err := svc.Preview(ctx, "env-1", tmpl.ID, "", map[string]any{"orderId": "55"}, map[string]any{"firstName": "Ada"})
+	preview, err := svc.Preview(ctx, tmpl.ID, "", map[string]any{"orderId": "55"}, map[string]any{"firstName": "Ada"})
 	if err != nil {
 		t.Fatal(err)
 	}

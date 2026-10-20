@@ -19,7 +19,7 @@ func (a *API) createWorkflow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "triggerId required")
 		return
 	}
-	if err := a.workflows.Create(r.Context(), envID(r), &wf); err != nil {
+	if err := a.workflows.Create(r.Context(), &wf); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -27,7 +27,7 @@ func (a *API) createWorkflow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) getWorkflow(w http.ResponseWriter, r *http.Request) {
-	wf, err := a.workflows.Get(r.Context(), envID(r), chi.URLParam(r, "id"))
+	wf, err := a.workflows.Get(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
@@ -36,7 +36,7 @@ func (a *API) getWorkflow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) listWorkflows(w http.ResponseWriter, r *http.Request) {
-	wfs, err := a.workflows.List(r.Context(), envID(r))
+	wfs, err := a.workflows.List(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -51,7 +51,7 @@ func (a *API) updateWorkflow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wf.ID = chi.URLParam(r, "id")
-	if err := a.workflows.Update(r.Context(), envID(r), &wf); err != nil {
+	if err := a.workflows.Update(r.Context(), &wf); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -59,7 +59,7 @@ func (a *API) updateWorkflow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) deleteWorkflow(w http.ResponseWriter, r *http.Request) {
-	if err := a.workflows.Delete(r.Context(), envID(r), chi.URLParam(r, "id")); err != nil {
+	if err := a.workflows.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}

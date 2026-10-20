@@ -17,7 +17,7 @@ func (a *API) createTemplate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := a.templates.Create(r.Context(), envID(r), &tmpl); err != nil {
+	if err := a.templates.Create(r.Context(), &tmpl); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -25,7 +25,7 @@ func (a *API) createTemplate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) listTemplates(w http.ResponseWriter, r *http.Request) {
-	items, err := a.templates.List(r.Context(), envID(r))
+	items, err := a.templates.List(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -34,7 +34,7 @@ func (a *API) listTemplates(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) getTemplate(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := a.templates.Get(r.Context(), envID(r), chi.URLParam(r, "id"))
+	tmpl, err := a.templates.Get(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
@@ -49,7 +49,7 @@ func (a *API) updateTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tmpl.ID = chi.URLParam(r, "id")
-	if err := a.templates.Update(r.Context(), envID(r), &tmpl); err != nil {
+	if err := a.templates.Update(r.Context(), &tmpl); err != nil {
 		status := http.StatusBadRequest
 		if repository.IsNotFound(err) {
 			status = http.StatusNotFound
@@ -57,7 +57,7 @@ func (a *API) updateTemplate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, status, err.Error())
 		return
 	}
-	got, err := a.templates.Get(r.Context(), envID(r), tmpl.ID)
+	got, err := a.templates.Get(r.Context(), tmpl.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -66,7 +66,7 @@ func (a *API) updateTemplate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) deleteTemplate(w http.ResponseWriter, r *http.Request) {
-	if err := a.templates.Delete(r.Context(), envID(r), chi.URLParam(r, "id")); err != nil {
+	if err := a.templates.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -80,7 +80,7 @@ func (a *API) createTemplateVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	templateID := chi.URLParam(r, "id")
-	if err := a.templates.CreateVersion(r.Context(), envID(r), templateID, &ver); err != nil {
+	if err := a.templates.CreateVersion(r.Context(), templateID, &ver); err != nil {
 		status := http.StatusBadRequest
 		if repository.IsNotFound(err) {
 			status = http.StatusNotFound
@@ -99,7 +99,7 @@ func (a *API) updateTemplateVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	ver.ID = chi.URLParam(r, "versionId")
 	templateID := chi.URLParam(r, "id")
-	if err := a.templates.UpdateVersion(r.Context(), envID(r), templateID, &ver); err != nil {
+	if err := a.templates.UpdateVersion(r.Context(), templateID, &ver); err != nil {
 		status := http.StatusBadRequest
 		if repository.IsNotFound(err) {
 			status = http.StatusNotFound
@@ -111,7 +111,7 @@ func (a *API) updateTemplateVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) deleteTemplateVersion(w http.ResponseWriter, r *http.Request) {
-	if err := a.templates.DeleteVersion(r.Context(), envID(r), chi.URLParam(r, "id"), chi.URLParam(r, "versionId")); err != nil {
+	if err := a.templates.DeleteVersion(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "versionId")); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -128,7 +128,7 @@ func (a *API) previewTemplate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	out, err := a.templates.Preview(r.Context(), envID(r), chi.URLParam(r, "id"), body.VersionID, body.Data, body.Subscriber)
+	out, err := a.templates.Preview(r.Context(), chi.URLParam(r, "id"), body.VersionID, body.Data, body.Subscriber)
 	if err != nil {
 		status := http.StatusBadRequest
 		if repository.IsNotFound(err) {

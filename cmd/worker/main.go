@@ -45,11 +45,8 @@ func main() {
 			span.SetStatus(codes.Error, err.Error())
 			return fmt.Errorf("%w: %w", err, asynq.SkipRetry)
 		}
-		span.SetAttributes(
-			attribute.String("herald.env_id", p.EnvID),
-			attribute.String("herald.job_id", p.JobID),
-		)
-		err = mapWorkerErr(app.Engine.ProcessJob(ctx, p.EnvID, p.JobID))
+		span.SetAttributes(attribute.String("herald.job_id", p.JobID))
+		err = mapWorkerErr(app.Engine.ProcessJob(ctx, p.JobID))
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
@@ -67,11 +64,10 @@ func main() {
 			return fmt.Errorf("%w: %w", err, asynq.SkipRetry)
 		}
 		span.SetAttributes(
-			attribute.String("herald.env_id", p.EnvID),
 			attribute.String("herald.job_id", p.JobID),
 			attribute.String("herald.bucket_id", p.BucketID),
 		)
-		err = mapWorkerErr(app.Engine.FlushDigest(ctx, p.EnvID, p.BucketID, p.JobID))
+		err = mapWorkerErr(app.Engine.FlushDigest(ctx, p.BucketID, p.JobID))
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
@@ -89,7 +85,6 @@ func main() {
 			return fmt.Errorf("%w: %w", err, asynq.SkipRetry)
 		}
 		span.SetAttributes(
-			attribute.String("herald.env_id", p.EnvID),
 			attribute.String("herald.transaction_id", p.TransactionID),
 			attribute.String("herald.topic_key", p.TopicKey),
 			attribute.String("herald.workflow_id", p.WorkflowID),

@@ -11,7 +11,6 @@ const TemplateGenerationDynamic = "dynamic"
 // named resource, versions, and one active version used at send time.
 type NotificationTemplate struct {
 	ID         string            `json:"id"`
-	EnvID      string            `json:"envId"`
 	Name       string            `json:"name"`
 	Generation string            `json:"generation"`
 	Versions   []TemplateVersion `json:"versions,omitempty"`

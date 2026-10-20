@@ -12,20 +12,19 @@ import (
 	"github.com/SolaTyolo/herald/internal/domain"
 )
 
-func (s *Store) workflowsDir(envID string) string {
-	return s.collection(envID, "workflows")
+func (s *Store) workflowsDir() string {
+	return s.collection("workflows")
 }
 
-func (s *Store) workflowPath(envID, id string) string {
-	return filepath.Join(s.workflowsDir(envID), id+".json")
+func (s *Store) workflowPath(id string) string {
+	return filepath.Join(s.workflowsDir(), id+".json")
 }
 
-func (s *Store) CreateWorkflow(ctx context.Context, envID string, wf *domain.Workflow) error {
+func (s *Store) CreateWorkflow(ctx context.Context, wf *domain.Workflow) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	wf.ID = uuid.NewString()
-	wf.EnvID = envID
 	now := time.Now()
 	wf.CreatedAt, wf.UpdatedAt = now, now
 	for i := range wf.Steps {
@@ -35,31 +34,31 @@ func (s *Store) CreateWorkflow(ctx context.Context, envID string, wf *domain.Wor
 		step.StepOrder = i + 1
 		step.CreatedAt = now
 	}
-	return writeJSON(s.workflowPath(envID, wf.ID), wf)
+	return writeJSON(s.workflowPath(wf.ID), wf)
 }
 
-func (s *Store) GetWorkflowByTrigger(ctx context.Context, envID, triggerID string) (*domain.Workflow, error) {
+func (s *Store) GetWorkflowByTrigger(ctx context.Context, triggerID string) (*domain.Workflow, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.findWorkflow(envID, func(wf *domain.Workflow) bool {
+	return s.findWorkflow(func(wf *domain.Workflow) bool {
 		return wf.TriggerID == triggerID && wf.Active
 	})
 }
 
-func (s *Store) GetWorkflow(ctx context.Context, envID, id string) (*domain.Workflow, error) {
+func (s *Store) GetWorkflow(ctx context.Context, id string) (*domain.Workflow, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var wf domain.Workflow
-	if err := readJSON(s.workflowPath(envID, id), &wf); err != nil {
+	if err := readJSON(s.workflowPath(id), &wf); err != nil {
 		return nil, err
 	}
 	return &wf, nil
 }
 
-func (s *Store) findWorkflow(envID string, match func(*domain.Workflow) bool) (*domain.Workflow, error) {
-	files, err := listJSONFiles(s.workflowsDir(envID))
+func (s *Store) findWorkflow(match func(*domain.Workflow) bool) (*domain.Workflow, error) {
+	files, err := listJSONFiles(s.workflowsDir())
 	if err != nil {
 		return nil, err
 	}
@@ -75,11 +74,11 @@ func (s *Store) findWorkflow(envID string, match func(*domain.Workflow) bool) (*
 	return nil, ErrNotFound
 }
 
-func (s *Store) ListWorkflows(ctx context.Context, envID string) ([]domain.Workflow, error) {
+func (s *Store) ListWorkflows(ctx context.Context) ([]domain.Workflow, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	files, err := listJSONFiles(s.workflowsDir(envID))
+	files, err := listJSONFiles(s.workflowsDir())
 	if err != nil {
 		return nil, err
 	}
@@ -97,11 +96,11 @@ func (s *Store) ListWorkflows(ctx context.Context, envID string) ([]domain.Workf
 	return out, nil
 }
 
-func (s *Store) UpdateWorkflow(ctx context.Context, envID string, wf *domain.Workflow) error {
+func (s *Store) UpdateWorkflow(ctx context.Context, wf *domain.Workflow) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	path := s.workflowPath(envID, wf.ID)
+	path := s.workflowPath(wf.ID)
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return ErrNotFound
@@ -123,9 +122,9 @@ func (s *Store) UpdateWorkflow(ctx context.Context, envID string, wf *domain.Wor
 	return writeJSON(path, wf)
 }
 
-func (s *Store) DeleteWorkflow(ctx context.Context, envID, id string) error {
+func (s *Store) DeleteWorkflow(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return deleteFile(s.workflowPath(envID, id))
+	return deleteFile(s.workflowPath(id))
 }

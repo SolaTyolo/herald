@@ -11,16 +11,15 @@ import (
 	"github.com/SolaTyolo/herald/internal/domain"
 )
 
-func (s *Store) CreateWorkflow(ctx context.Context, envID string, wf *domain.Workflow) error {
+func (s *Store) CreateWorkflow(ctx context.Context, wf *domain.Workflow) error {
 	wf.ID = uuid.NewString()
-	wf.EnvID = envID
 	now := time.Now()
 	wf.CreatedAt, wf.UpdatedAt = now, now
 	prefs, _ := json.Marshal(wf.PreferenceSettings)
 
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		m := workflowModel{
-			ID: wf.ID, EnvID: envID, Name: wf.Name, TriggerID: wf.TriggerID,
+			ID: wf.ID, Name: wf.Name, TriggerID: wf.TriggerID,
 			Critical: wf.Critical, PreferenceSettings: prefs, Active: wf.Active,
 			CreatedAt: wf.CreatedAt, UpdatedAt: wf.UpdatedAt,
 		}
@@ -47,18 +46,17 @@ func (s *Store) CreateWorkflow(ctx context.Context, envID string, wf *domain.Wor
 	})
 }
 
-func (s *Store) GetWorkflowByTrigger(ctx context.Context, envID, triggerID string) (*domain.Workflow, error) {
-	return s.getWorkflow(ctx, envID, "trigger_id = ? AND active = ?", triggerID, true)
+func (s *Store) GetWorkflowByTrigger(ctx context.Context, triggerID string) (*domain.Workflow, error) {
+	return s.getWorkflow(ctx, "trigger_id = ? AND active = ?", triggerID, true)
 }
 
-func (s *Store) GetWorkflow(ctx context.Context, envID, id string) (*domain.Workflow, error) {
-	return s.getWorkflow(ctx, envID, "id = ?", id)
+func (s *Store) GetWorkflow(ctx context.Context, id string) (*domain.Workflow, error) {
+	return s.getWorkflow(ctx, "id = ?", id)
 }
 
-func (s *Store) getWorkflow(ctx context.Context, envID string, query string, args ...any) (*domain.Workflow, error) {
+func (s *Store) getWorkflow(ctx context.Context, query string, args ...any) (*domain.Workflow, error) {
 	var m workflowModel
-	q := s.db.WithContext(ctx).Where("env_id = ?", envID).Where(query, args...)
-	if err := q.First(&m).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where(query, args...).First(&m).Error; err != nil {
 		return nil, err
 	}
 	wf, err := m.toDomain()
@@ -85,9 +83,9 @@ func (s *Store) loadWorkflowSteps(ctx context.Context, workflowID string) ([]dom
 	return out, nil
 }
 
-func (s *Store) ListWorkflows(ctx context.Context, envID string) ([]domain.Workflow, error) {
+func (s *Store) ListWorkflows(ctx context.Context) ([]domain.Workflow, error) {
 	var rows []workflowModel
-	if err := s.db.WithContext(ctx).Where("env_id = ?", envID).Order("created_at DESC").Find(&rows).Error; err != nil {
+	if err := s.db.WithContext(ctx).Order("created_at DESC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make([]domain.Workflow, 0, len(rows))
@@ -102,11 +100,11 @@ func (s *Store) ListWorkflows(ctx context.Context, envID string) ([]domain.Workf
 	return out, nil
 }
 
-func (s *Store) UpdateWorkflow(ctx context.Context, envID string, wf *domain.Workflow) error {
+func (s *Store) UpdateWorkflow(ctx context.Context, wf *domain.Workflow) error {
 	prefs, _ := json.Marshal(wf.PreferenceSettings)
 	wf.UpdatedAt = time.Now()
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		res := tx.Model(&workflowModel{}).Where("id = ? AND env_id = ?", wf.ID, envID).Updates(map[string]any{
+		res := tx.Model(&workflowModel{}).Where("id = ?", wf.ID).Updates(map[string]any{
 			"name": wf.Name, "trigger_id": wf.TriggerID, "critical": wf.Critical,
 			"preference_settings": prefs, "active": wf.Active, "updated_at": wf.UpdatedAt,
 		})
@@ -140,8 +138,8 @@ func (s *Store) UpdateWorkflow(ctx context.Context, envID string, wf *domain.Wor
 	})
 }
 
-func (s *Store) DeleteWorkflow(ctx context.Context, envID, id string) error {
-	res := s.db.WithContext(ctx).Where("id = ? AND env_id = ?", id, envID).Delete(&workflowModel{})
+func (s *Store) DeleteWorkflow(ctx context.Context, id string) error {
+	res := s.db.WithContext(ctx).Where("id = ?", id).Delete(&workflowModel{})
 	if res.Error != nil {
 		return res.Error
 	}

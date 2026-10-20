@@ -5,28 +5,6 @@ import (
 	"time"
 )
 
-type Tenant struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type Environment struct {
-	ID        string    `json:"id"`
-	TenantID  string    `json:"tenantId"`
-	Name      string    `json:"name"`
-	Slug      string    `json:"slug"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type APIKey struct {
-	ID        string    `json:"id"`
-	EnvID     string    `json:"envId"`
-	Name      string    `json:"name"`
-	KeyPrefix string    `json:"keyPrefix"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
 type MessageTemplate struct {
 	Subject            string          `json:"subject,omitempty"`
 	Title              string          `json:"title,omitempty"`
@@ -75,7 +53,6 @@ type ChannelPrefs map[ChannelType]bool
 
 type Workflow struct {
 	ID                 string         `json:"id"`
-	EnvID              string         `json:"envId"`
 	Name               string         `json:"name"`
 	TriggerID          string         `json:"triggerId"`
 	Critical           bool           `json:"critical"`

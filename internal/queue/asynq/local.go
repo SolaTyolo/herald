@@ -11,15 +11,15 @@ import (
 
 // Tasks is the in-process work executed by a local queue.
 type Tasks interface {
-	ProcessJob(ctx context.Context, envID, jobID string) error
-	FlushDigest(ctx context.Context, envID, bucketID, jobID string) error
+	ProcessJob(ctx context.Context, jobID string) error
+	FlushDigest(ctx context.Context, bucketID, jobID string) error
 	ProcessTopicFanout(ctx context.Context, p TopicFanoutPayload) error
 }
 
 // Enqueuer schedules workflow tasks.
 type Enqueuer interface {
-	EnqueueJob(ctx context.Context, envID, jobID string, processAt *time.Time) error
-	EnqueueDigestFlush(ctx context.Context, envID, bucketID, jobID string, at time.Time) error
+	EnqueueJob(ctx context.Context, jobID string, processAt *time.Time) error
+	EnqueueDigestFlush(ctx context.Context, bucketID, jobID string, at time.Time) error
 	EnqueueTopicFanout(ctx context.Context, p TopicFanoutPayload) error
 	Close() error
 }
@@ -43,15 +43,15 @@ func (q *Local) Bind(tasks Tasks) {
 	q.mu.Unlock()
 }
 
-func (q *Local) EnqueueJob(_ context.Context, envID, jobID string, processAt *time.Time) error {
+func (q *Local) EnqueueJob(_ context.Context, jobID string, processAt *time.Time) error {
 	return q.schedule(processAt, func(ctx context.Context) error {
-		return q.tasks.ProcessJob(ctx, envID, jobID)
+		return q.tasks.ProcessJob(ctx, jobID)
 	})
 }
 
-func (q *Local) EnqueueDigestFlush(_ context.Context, envID, bucketID, jobID string, at time.Time) error {
+func (q *Local) EnqueueDigestFlush(_ context.Context, bucketID, jobID string, at time.Time) error {
 	return q.schedule(&at, func(ctx context.Context) error {
-		return q.tasks.FlushDigest(ctx, envID, bucketID, jobID)
+		return q.tasks.FlushDigest(ctx, bucketID, jobID)
 	})
 }
 

@@ -7,7 +7,6 @@ import (
 
 type Notification struct {
 	ID            string             `json:"id"`
-	EnvID         string             `json:"envId"`
 	TransactionID string             `json:"transactionId"`
 	WorkflowID    string             `json:"workflowId"`
 	SubscriberPK  string             `json:"subscriberPk"`
@@ -34,7 +33,6 @@ type Job struct {
 
 type Message struct {
 	ID           string          `json:"id"`
-	EnvID        string          `json:"envId"`
 	JobID        *string         `json:"jobId,omitempty"`
 	SubscriberPK string          `json:"subscriberPk"`
 	Channel      ChannelType     `json:"channel"`
@@ -50,7 +48,6 @@ type Message struct {
 
 type DigestBucket struct {
 	ID           string          `json:"id"`
-	EnvID        string          `json:"envId"`
 	DigestKey    string          `json:"digestKey"`
 	SubscriberPK string          `json:"subscriberPk"`
 	WorkflowID   string          `json:"workflowId"`
@@ -64,7 +61,6 @@ type DigestBucket struct {
 
 type ExecutionLog struct {
 	ID             string          `json:"id"`
-	EnvID          string          `json:"envId"`
 	TransactionID  string          `json:"transactionId"`
 	NotificationID *string         `json:"notificationId,omitempty"`
 	JobID          *string         `json:"jobId,omitempty"`

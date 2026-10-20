@@ -50,6 +50,7 @@ make docker-up
 
 | Variable | Default | Notes |
 |----------|---------|-------|
+| `API_KEY` | — (required) | REST Bearer auth |
 | `PROVIDERS_CONFIG` | `./config/providers.yaml` | YAML routing (hot-reload) |
 | `SMTP_HOST` / `SMTP_FROM` / … | — | Builtin `smtp_email` credentials |
 | `DELIVERY_RESULT_MODE` | `async` | Redis result queue / `sync` HTTP body |

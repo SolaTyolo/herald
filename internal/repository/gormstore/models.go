@@ -29,7 +29,6 @@ func openDB(driver config.DBDriver, dsn string) (*gorm.DB, error) {
 
 func allModels() []any {
 	return []any{
-		&tenantModel{}, &environmentModel{}, &apiKeyModel{},
 		&workflowModel{}, &workflowStepModel{},
 		&subscriberModel{}, &subscriberPreferenceModel{},
 		&topicModel{}, &topicSubscriptionModel{},
@@ -39,44 +38,10 @@ func allModels() []any {
 	}
 }
 
-type tenantModel struct {
-	ID        string    `gorm:"primaryKey;size:36"`
-	Name      string    `gorm:"not null"`
-	CreatedAt time.Time `gorm:"not null"`
-}
-
-func (tenantModel) TableName() string { return "tenants" }
-
-type environmentModel struct {
-	ID        string    `gorm:"primaryKey;size:36"`
-	TenantID  string    `gorm:"size:36;not null;uniqueIndex:idx_env_tenant_slug,priority:1"`
-	Name      string    `gorm:"not null"`
-	Slug      string    `gorm:"not null;uniqueIndex:idx_env_tenant_slug,priority:2"`
-	CreatedAt time.Time `gorm:"not null"`
-}
-
-func (environmentModel) TableName() string { return "environments" }
-
-func (m environmentModel) toDomain() *domain.Environment {
-	return &domain.Environment{ID: m.ID, TenantID: m.TenantID, Name: m.Name, Slug: m.Slug, CreatedAt: m.CreatedAt}
-}
-
-type apiKeyModel struct {
-	ID        string    `gorm:"primaryKey;size:36"`
-	EnvID     string    `gorm:"size:36;not null;index"`
-	Name      string    `gorm:"not null"`
-	KeyHash   string    `gorm:"not null;uniqueIndex"`
-	KeyPrefix string    `gorm:"not null;index"`
-	CreatedAt time.Time `gorm:"not null"`
-}
-
-func (apiKeyModel) TableName() string { return "api_keys" }
-
 type workflowModel struct {
 	ID                 string    `gorm:"primaryKey;size:36"`
-	EnvID              string    `gorm:"size:36;not null;uniqueIndex:idx_workflow_trigger,priority:1"`
 	Name               string    `gorm:"not null"`
-	TriggerID          string    `gorm:"not null;uniqueIndex:idx_workflow_trigger,priority:2"`
+	TriggerID          string    `gorm:"not null;uniqueIndex"`
 	Critical           bool      `gorm:"not null;default:false"`
 	PreferenceSettings []byte    `gorm:"type:json;not null"`
 	Active             bool      `gorm:"not null;default:true"`
@@ -88,7 +53,7 @@ func (workflowModel) TableName() string { return "workflows" }
 
 func (m workflowModel) toDomain() (*domain.Workflow, error) {
 	wf := &domain.Workflow{
-		ID: m.ID, EnvID: m.EnvID, Name: m.Name, TriggerID: m.TriggerID,
+		ID: m.ID, Name: m.Name, TriggerID: m.TriggerID,
 		Critical: m.Critical, Active: m.Active, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 	if len(m.PreferenceSettings) > 0 {
@@ -131,8 +96,7 @@ func (m workflowStepModel) toDomain() (*domain.WorkflowStep, error) {
 
 type subscriberModel struct {
 	ID              string `gorm:"primaryKey;size:36"`
-	EnvID           string `gorm:"size:36;not null;index;uniqueIndex:idx_subscriber_env,priority:1"`
-	SubscriberID    string `gorm:"not null;uniqueIndex:idx_subscriber_env,priority:2"`
+	SubscriberID    string `gorm:"not null;uniqueIndex"`
 	Email           string
 	Phone           string
 	FirstName       string
@@ -150,7 +114,7 @@ func (subscriberModel) TableName() string { return "subscribers" }
 
 func subscriberModelFromDomain(sub *domain.Subscriber) subscriberModel {
 	return subscriberModel{
-		ID: sub.ID, EnvID: sub.EnvID, SubscriberID: sub.SubscriberID,
+		ID: sub.ID, SubscriberID: sub.SubscriberID,
 		Email: sub.Email, Phone: sub.Phone, FirstName: sub.FirstName, LastName: sub.LastName, Locale: sub.Locale,
 		WebhookURL: sub.WebhookURL,
 		Data:       sub.Data, DeviceTokens: sub.DeviceTokens, ChatCredentials: sub.ChatCredentials,
@@ -160,7 +124,7 @@ func subscriberModelFromDomain(sub *domain.Subscriber) subscriberModel {
 
 func (m subscriberModel) toDomain() (*domain.Subscriber, error) {
 	return &domain.Subscriber{
-		ID: m.ID, EnvID: m.EnvID, SubscriberID: m.SubscriberID,
+		ID: m.ID, SubscriberID: m.SubscriberID,
 		Email: m.Email, Phone: m.Phone, FirstName: m.FirstName, LastName: m.LastName, Locale: m.Locale,
 		WebhookURL: m.WebhookURL,
 		Data:       m.Data, DeviceTokens: m.DeviceTokens, ChatCredentials: m.ChatCredentials,
@@ -184,8 +148,7 @@ func (m subscriberPreferenceModel) toDomain() domain.SubscriberPreference {
 
 type topicModel struct {
 	ID        string `gorm:"primaryKey;size:36"`
-	EnvID     string `gorm:"size:36;not null;index;uniqueIndex:idx_topic_env,priority:1"`
-	TopicKey  string `gorm:"not null;uniqueIndex:idx_topic_env,priority:2"`
+	TopicKey  string `gorm:"not null;uniqueIndex"`
 	Name      string
 	CreatedAt time.Time `gorm:"not null"`
 }
@@ -193,7 +156,7 @@ type topicModel struct {
 func (topicModel) TableName() string { return "topics" }
 
 func (m topicModel) toDomain() (*domain.Topic, error) {
-	return &domain.Topic{ID: m.ID, EnvID: m.EnvID, TopicKey: m.TopicKey, Name: m.Name, CreatedAt: m.CreatedAt}, nil
+	return &domain.Topic{ID: m.ID, TopicKey: m.TopicKey, Name: m.Name, CreatedAt: m.CreatedAt}, nil
 }
 
 type topicSubscriptionModel struct {
@@ -207,10 +170,9 @@ func (topicSubscriptionModel) TableName() string { return "topic_subscriptions" 
 
 type notificationModel struct {
 	ID            string    `gorm:"primaryKey;size:36"`
-	EnvID         string    `gorm:"size:36;not null;index;uniqueIndex:idx_notif_tx,priority:1"`
-	TransactionID string    `gorm:"not null;index;uniqueIndex:idx_notif_tx,priority:2"`
+	TransactionID string    `gorm:"not null;index;uniqueIndex:idx_notif_tx,priority:1"`
 	WorkflowID    string    `gorm:"size:36;not null"`
-	SubscriberPK  string    `gorm:"size:36;not null;uniqueIndex:idx_notif_tx,priority:3"`
+	SubscriberPK  string    `gorm:"size:36;not null;uniqueIndex:idx_notif_tx,priority:2"`
 	Payload       []byte    `gorm:"type:json;not null"`
 	Status        string    `gorm:"not null;default:pending"`
 	CreatedAt     time.Time `gorm:"not null"`
@@ -220,14 +182,14 @@ func (notificationModel) TableName() string { return "notifications" }
 
 func notificationModelFromDomain(n *domain.Notification) notificationModel {
 	return notificationModel{
-		ID: n.ID, EnvID: n.EnvID, TransactionID: n.TransactionID, WorkflowID: n.WorkflowID,
+		ID: n.ID, TransactionID: n.TransactionID, WorkflowID: n.WorkflowID,
 		SubscriberPK: n.SubscriberPK, Payload: n.Payload, Status: string(n.Status), CreatedAt: n.CreatedAt,
 	}
 }
 
 func (m notificationModel) toDomain() (*domain.Notification, error) {
 	return &domain.Notification{
-		ID: m.ID, EnvID: m.EnvID, TransactionID: m.TransactionID, WorkflowID: m.WorkflowID,
+		ID: m.ID, TransactionID: m.TransactionID, WorkflowID: m.WorkflowID,
 		SubscriberPK: m.SubscriberPK, Payload: m.Payload, Status: domain.NotificationStatus(m.Status), CreatedAt: m.CreatedAt,
 	}, nil
 }
@@ -270,8 +232,7 @@ func (m jobModel) toDomain() (*domain.Job, error) {
 
 type messageModel struct {
 	ID           string  `gorm:"primaryKey;size:36"`
-	EnvID        string  `gorm:"size:36;not null;index;index:idx_messages_env_job,priority:1"`
-	JobID        *string `gorm:"size:36;index:idx_messages_env_job,priority:2"`
+	JobID        *string `gorm:"size:36;index"`
 	SubscriberPK string  `gorm:"size:36;not null;index"`
 	Channel      string  `gorm:"not null"`
 	Subject      string
@@ -288,7 +249,7 @@ func (messageModel) TableName() string { return "messages" }
 
 func messageModelFromDomain(msg *domain.Message) *messageModel {
 	return &messageModel{
-		ID: msg.ID, EnvID: msg.EnvID, JobID: msg.JobID, SubscriberPK: msg.SubscriberPK,
+		ID: msg.ID, JobID: msg.JobID, SubscriberPK: msg.SubscriberPK,
 		Channel: string(msg.Channel), Subject: msg.Subject, Title: msg.Title, Content: msg.Content,
 		Metadata: msg.Metadata, ProviderRef: msg.ProviderRef, Read: msg.Read, Archived: msg.Archived, CreatedAt: msg.CreatedAt,
 	}
@@ -296,7 +257,7 @@ func messageModelFromDomain(msg *domain.Message) *messageModel {
 
 func (m messageModel) toDomain() (*domain.Message, error) {
 	return &domain.Message{
-		ID: m.ID, EnvID: m.EnvID, JobID: m.JobID, SubscriberPK: m.SubscriberPK,
+		ID: m.ID, JobID: m.JobID, SubscriberPK: m.SubscriberPK,
 		Channel: domain.ChannelType(m.Channel), Subject: m.Subject, Title: m.Title, Content: m.Content,
 		Metadata: m.Metadata, ProviderRef: m.ProviderRef, Read: m.Read, Archived: m.Archived, CreatedAt: m.CreatedAt,
 	}, nil
@@ -304,14 +265,13 @@ func (m messageModel) toDomain() (*domain.Message, error) {
 
 type digestBucketModel struct {
 	ID           string    `gorm:"primaryKey;size:36"`
-	EnvID        string    `gorm:"size:36;not null;index;uniqueIndex:idx_digest_active,priority:1"`
-	DigestKey    string    `gorm:"not null;index;uniqueIndex:idx_digest_active,priority:2"`
-	SubscriberPK string    `gorm:"size:36;not null;index;uniqueIndex:idx_digest_active,priority:3"`
+	DigestKey    string    `gorm:"not null;index;uniqueIndex:idx_digest_active,priority:1"`
+	SubscriberPK string    `gorm:"size:36;not null;index;uniqueIndex:idx_digest_active,priority:2"`
 	WorkflowID   string    `gorm:"size:36;not null"`
 	StepID       string    `gorm:"size:36;not null"`
 	JobID        *string   `gorm:"size:36"`
 	Events       []byte    `gorm:"type:json;not null"`
-	WindowEnd    time.Time `gorm:"not null;index;uniqueIndex:idx_digest_active,priority:4"`
+	WindowEnd    time.Time `gorm:"not null;index;uniqueIndex:idx_digest_active,priority:3"`
 	CreatedAt    time.Time `gorm:"not null"`
 	UpdatedAt    time.Time `gorm:"not null"`
 }
@@ -320,7 +280,7 @@ func (digestBucketModel) TableName() string { return "digest_buckets" }
 
 func digestBucketModelFromDomain(b *domain.DigestBucket) digestBucketModel {
 	return digestBucketModel{
-		ID: b.ID, EnvID: b.EnvID, DigestKey: b.DigestKey, SubscriberPK: b.SubscriberPK,
+		ID: b.ID, DigestKey: b.DigestKey, SubscriberPK: b.SubscriberPK,
 		WorkflowID: b.WorkflowID, StepID: b.StepID, JobID: b.JobID,
 		Events: b.Events, WindowEnd: b.WindowEnd, CreatedAt: b.CreatedAt, UpdatedAt: b.UpdatedAt,
 	}
@@ -328,7 +288,7 @@ func digestBucketModelFromDomain(b *domain.DigestBucket) digestBucketModel {
 
 func (m digestBucketModel) toDomain() (*domain.DigestBucket, error) {
 	return &domain.DigestBucket{
-		ID: m.ID, EnvID: m.EnvID, DigestKey: m.DigestKey, SubscriberPK: m.SubscriberPK,
+		ID: m.ID, DigestKey: m.DigestKey, SubscriberPK: m.SubscriberPK,
 		WorkflowID: m.WorkflowID, StepID: m.StepID, JobID: m.JobID,
 		Events: m.Events, WindowEnd: m.WindowEnd, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}, nil
@@ -336,7 +296,6 @@ func (m digestBucketModel) toDomain() (*domain.DigestBucket, error) {
 
 type executionLogModel struct {
 	ID             string  `gorm:"primaryKey;size:36"`
-	EnvID          string  `gorm:"size:36;not null;index"`
 	TransactionID  string  `gorm:"not null;index"`
 	NotificationID *string `gorm:"size:36"`
 	JobID          *string `gorm:"size:36"`
@@ -351,7 +310,7 @@ func (executionLogModel) TableName() string { return "execution_logs" }
 
 func executionLogModelFromDomain(l *domain.ExecutionLog) *executionLogModel {
 	return &executionLogModel{
-		ID: l.ID, EnvID: l.EnvID, TransactionID: l.TransactionID, NotificationID: l.NotificationID,
+		ID: l.ID, TransactionID: l.TransactionID, NotificationID: l.NotificationID,
 		JobID: l.JobID, StepType: l.StepType, Level: l.Level, Message: l.Message,
 		Metadata: l.Metadata, CreatedAt: l.CreatedAt,
 	}
@@ -359,7 +318,6 @@ func executionLogModelFromDomain(l *domain.ExecutionLog) *executionLogModel {
 
 type notificationTemplateModel struct {
 	ID         string    `gorm:"primaryKey;size:36"`
-	EnvID      string    `gorm:"size:36;not null;index"`
 	Name       string    `gorm:"not null"`
 	Generation string    `gorm:"not null"`
 	CreatedAt  time.Time `gorm:"not null"`
@@ -370,7 +328,7 @@ func (notificationTemplateModel) TableName() string { return "notification_templ
 
 func (m notificationTemplateModel) toDomain() *domain.NotificationTemplate {
 	return &domain.NotificationTemplate{
-		ID: m.ID, EnvID: m.EnvID, Name: m.Name, Generation: m.Generation,
+		ID: m.ID, Name: m.Name, Generation: m.Generation,
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
@@ -416,10 +374,8 @@ func (m templateVersionModel) toDomain() *domain.TemplateVersion {
 
 func (m executionLogModel) toDomain() (*domain.ExecutionLog, error) {
 	return &domain.ExecutionLog{
-		ID: m.ID, EnvID: m.EnvID, TransactionID: m.TransactionID, NotificationID: m.NotificationID,
+		ID: m.ID, TransactionID: m.TransactionID, NotificationID: m.NotificationID,
 		JobID: m.JobID, StepType: m.StepType, Level: m.Level, Message: m.Message,
 		Metadata: m.Metadata, CreatedAt: m.CreatedAt,
 	}, nil
 }
-
-// unique indexes are declared on model fields above.

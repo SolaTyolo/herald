@@ -42,9 +42,9 @@ func New(store repository.Store, routes *routing.Table, events bridge.Publisher,
 	}
 }
 
-func (s *Service) SendChannel(ctx context.Context, envID string, channel domain.ChannelType, sub *domain.Subscriber, rendered *domain.MessageTemplate, jobID *string, sendCtx *SendContext) (*domain.Message, error) {
+func (s *Service) SendChannel(ctx context.Context, channel domain.ChannelType, sub *domain.Subscriber, rendered *domain.MessageTemplate, jobID *string, sendCtx *SendContext) (*domain.Message, error) {
 	if jobID != nil && *jobID != "" {
-		existing, err := s.store.GetMessageByJobID(ctx, envID, *jobID)
+		existing, err := s.store.GetMessageByJobID(ctx, *jobID)
 		if err == nil {
 			return existing, nil
 		}
@@ -54,7 +54,7 @@ func (s *Service) SendChannel(ctx context.Context, envID string, channel domain.
 	}
 
 	if channel == domain.ChannelInApp {
-		return s.sendInApp(ctx, envID, sub, rendered, jobID)
+		return s.sendInApp(ctx, sub, rendered, jobID)
 	}
 
 	providers := s.routes.ProvidersForChannel(string(channel))
@@ -64,7 +64,7 @@ func (s *Service) SendChannel(ctx context.Context, envID string, channel domain.
 
 	var lastErr error
 	for _, route := range providers {
-		msg, err := s.sendViaRoute(ctx, envID, channel, route, sub, rendered, jobID, sendCtx)
+		msg, err := s.sendViaRoute(ctx, channel, route, sub, rendered, jobID, sendCtx)
 		if err == nil {
 			return msg, nil
 		}
@@ -77,9 +77,8 @@ func (s *Service) SendChannel(ctx context.Context, envID string, channel domain.
 	return nil, lastErr
 }
 
-func (s *Service) sendInApp(ctx context.Context, envID string, sub *domain.Subscriber, rendered *domain.MessageTemplate, jobID *string) (*domain.Message, error) {
+func (s *Service) sendInApp(ctx context.Context, sub *domain.Subscriber, rendered *domain.MessageTemplate, jobID *string) (*domain.Message, error) {
 	msg := &domain.Message{
-		EnvID:        envID,
 		JobID:        jobID,
 		SubscriberPK: sub.ID,
 		Channel:      domain.ChannelInApp,
@@ -98,7 +97,7 @@ func (s *Service) sendInApp(ctx context.Context, envID string, sub *domain.Subsc
 	return msg, nil
 }
 
-func (s *Service) sendViaRoute(ctx context.Context, envID string, channel domain.ChannelType, route routing.Provider, sub *domain.Subscriber, rendered *domain.MessageTemplate, jobID *string, sendCtx *SendContext) (*domain.Message, error) {
+func (s *Service) sendViaRoute(ctx context.Context, channel domain.ChannelType, route routing.Provider, sub *domain.Subscriber, rendered *domain.MessageTemplate, jobID *string, sendCtx *SendContext) (*domain.Message, error) {
 	if route.Type == routing.TypeRemote && route.Service != "" && !s.routes.IsServiceHealthy(route.Service) {
 		return nil, &RetryableError{Code: "service_unhealthy", Message: fmt.Sprintf("service %s is unhealthy", route.Service)}
 	}
@@ -157,7 +156,6 @@ func (s *Service) sendViaRoute(ctx context.Context, envID string, channel domain
 		ref = route.Name
 	}
 	msg := &domain.Message{
-		EnvID:        envID,
 		JobID:        jobID,
 		SubscriberPK: sub.ID,
 		Channel:      channel,

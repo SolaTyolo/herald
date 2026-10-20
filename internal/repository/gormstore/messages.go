@@ -21,12 +21,12 @@ func (s *Store) CreateMessage(ctx context.Context, msg *domain.Message) error {
 	return s.db.WithContext(ctx).Create(messageModelFromDomain(msg)).Error
 }
 
-func (s *Store) GetMessageByJobID(ctx context.Context, envID, jobID string) (*domain.Message, error) {
+func (s *Store) GetMessageByJobID(ctx context.Context, jobID string) (*domain.Message, error) {
 	if jobID == "" {
 		return nil, gorm.ErrRecordNotFound
 	}
 	var m messageModel
-	err := s.db.WithContext(ctx).Where("env_id = ? AND job_id = ?", envID, jobID).First(&m).Error
+	err := s.db.WithContext(ctx).Where("job_id = ?", jobID).First(&m).Error
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func (s *Store) ListMessages(ctx context.Context, subscriberPK string, unreadOnl
 	return out, nil
 }
 
-func (s *Store) UpdateMessageForSubscriber(ctx context.Context, envID, subscriberPK, messageID string, read, archived *bool) (*domain.Message, error) {
+func (s *Store) UpdateMessageForSubscriber(ctx context.Context, subscriberPK, messageID string, read, archived *bool) (*domain.Message, error) {
 	updates := map[string]any{}
 	if read != nil {
 		updates["read"] = *read
@@ -63,7 +63,7 @@ func (s *Store) UpdateMessageForSubscriber(ctx context.Context, envID, subscribe
 	}
 	var m messageModel
 	res := s.db.WithContext(ctx).Model(&messageModel{}).
-		Where("id = ? AND env_id = ? AND subscriber_pk = ?", messageID, envID, subscriberPK).
+		Where("id = ? AND subscriber_pk = ?", messageID, subscriberPK).
 		Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error

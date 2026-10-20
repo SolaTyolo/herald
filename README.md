@@ -40,8 +40,10 @@ Manual e2e UI (separate from the API):
 make playground   # http://localhost:8090 — see e2e/README.md
 ```
 
+Set `API_KEY` in `.env` (required). Callers send:
+
 ```
-Authorization: Bearer <key>
+Authorization: Bearer <API_KEY>
 ```
 
 ## Example trigger
@@ -68,6 +70,7 @@ curl -X POST http://localhost:8080/v1/events/trigger \
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `API_KEY` | — (required) | REST Bearer auth |
 | `PROVIDERS_CONFIG` | `./config/providers.yaml` | YAML routing (hot-reload) |
 | `DELIVERY_RESULT_MODE` | `async` | `async` Redis queue / `sync` HTTP body |
 | `STORE_TYPE` | `db` | `file` or `db` |

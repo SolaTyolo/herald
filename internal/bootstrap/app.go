@@ -25,12 +25,12 @@ type localTasks struct {
 	trigger *service.TriggerService
 }
 
-func (t *localTasks) ProcessJob(ctx context.Context, envID, jobID string) error {
-	return t.engine.ProcessJob(ctx, envID, jobID)
+func (t *localTasks) ProcessJob(ctx context.Context, jobID string) error {
+	return t.engine.ProcessJob(ctx, jobID)
 }
 
-func (t *localTasks) FlushDigest(ctx context.Context, envID, bucketID, jobID string) error {
-	return t.engine.FlushDigest(ctx, envID, bucketID, jobID)
+func (t *localTasks) FlushDigest(ctx context.Context, bucketID, jobID string) error {
+	return t.engine.FlushDigest(ctx, bucketID, jobID)
 }
 
 func (t *localTasks) ProcessTopicFanout(ctx context.Context, p asynqqueue.TopicFanoutPayload) error {
@@ -83,17 +83,6 @@ func New(ctx context.Context, role Role) (*App, error) {
 		if err := store.RunMigrations(ctx); err != nil {
 			store.Close()
 			return nil, err
-		}
-	}
-	env, apiKey, err := store.EnsureDefaultTenant(ctx)
-	if err != nil {
-		store.Close()
-		return nil, err
-	}
-	if apiKey != "" {
-		slog.Info("default api key created", "prefix", apiKey[:10], "env", env.Slug, "hint", "full key printed once at creation — store it securely")
-		if cfg.DevMode {
-			slog.Warn("DEV_MODE: default API key", "key", apiKey)
 		}
 	}
 

@@ -53,18 +53,18 @@ func (s *Store) CreateNotification(ctx context.Context, n *domain.Notification, 
 	})
 }
 
-func (s *Store) GetNotificationByTransaction(ctx context.Context, envID, transactionID, subscriberPK string) (*domain.Notification, error) {
+func (s *Store) GetNotificationByTransaction(ctx context.Context, transactionID, subscriberPK string) (*domain.Notification, error) {
 	var m notificationModel
-	err := s.db.WithContext(ctx).Where("env_id = ? AND transaction_id = ? AND subscriber_pk = ?", envID, transactionID, subscriberPK).First(&m).Error
+	err := s.db.WithContext(ctx).Where("transaction_id = ? AND subscriber_pk = ?", transactionID, subscriberPK).First(&m).Error
 	if err != nil {
 		return nil, err
 	}
 	return m.toDomain()
 }
 
-func (s *Store) ListNotifications(ctx context.Context, envID string, limit, offset int) ([]domain.Notification, error) {
+func (s *Store) ListNotifications(ctx context.Context, limit, offset int) ([]domain.Notification, error) {
 	var rows []notificationModel
-	if err := s.db.WithContext(ctx).Where("env_id = ?", envID).
+	if err := s.db.WithContext(ctx).
 		Order("created_at DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -108,12 +108,12 @@ func (s *Store) UpdateJob(ctx context.Context, job *domain.Job) error {
 	}).Error
 }
 
-func (s *Store) ListJobsByTransaction(ctx context.Context, envID, transactionID string) ([]domain.Job, error) {
+func (s *Store) ListJobsByTransaction(ctx context.Context, transactionID string) ([]domain.Job, error) {
 	var rows []jobModel
 	err := s.db.WithContext(ctx).
 		Table("jobs").
 		Joins("JOIN notifications ON notifications.id = jobs.notification_id").
-		Where("notifications.env_id = ? AND notifications.transaction_id = ?", envID, transactionID).
+		Where("notifications.transaction_id = ?", transactionID).
 		Order("jobs.step_order ASC").
 		Find(&rows).Error
 	if err != nil {

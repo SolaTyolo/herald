@@ -19,7 +19,7 @@ func (a *API) createTopic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "topicKey required")
 		return
 	}
-	if err := a.topics.Create(r.Context(), envID(r), &t); err != nil {
+	if err := a.topics.Create(r.Context(), &t); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -27,7 +27,7 @@ func (a *API) createTopic(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) listTopics(w http.ResponseWriter, r *http.Request) {
-	topics, err := a.topics.List(r.Context(), envID(r))
+	topics, err := a.topics.List(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -36,7 +36,7 @@ func (a *API) listTopics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) deleteTopic(w http.ResponseWriter, r *http.Request) {
-	if err := a.topics.Delete(r.Context(), envID(r), chi.URLParam(r, "topicKey")); err != nil {
+	if err := a.topics.Delete(r.Context(), chi.URLParam(r, "topicKey")); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -51,7 +51,7 @@ func (a *API) subscribeTopic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := a.topics.Subscribe(r.Context(), envID(r), chi.URLParam(r, "topicKey"), body.SubscriberID); err != nil {
+	if err := a.topics.Subscribe(r.Context(), chi.URLParam(r, "topicKey"), body.SubscriberID); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -59,7 +59,7 @@ func (a *API) subscribeTopic(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) unsubscribeTopic(w http.ResponseWriter, r *http.Request) {
-	if err := a.topics.Unsubscribe(r.Context(), envID(r), chi.URLParam(r, "topicKey"), chi.URLParam(r, "subscriberId")); err != nil {
+	if err := a.topics.Unsubscribe(r.Context(), chi.URLParam(r, "topicKey"), chi.URLParam(r, "subscriberId")); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

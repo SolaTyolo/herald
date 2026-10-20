@@ -25,18 +25,15 @@ func (c *Client) Close() error { return c.client.Close() }
 
 type JobPayload struct {
 	JobID string `json:"jobId"`
-	EnvID string `json:"envId"`
 }
 
 type DigestPayload struct {
 	BucketID string `json:"bucketId"`
 	JobID    string `json:"jobId"`
-	EnvID    string `json:"envId"`
 }
 
 // TopicFanoutPayload is processed by the worker to create per-subscriber notifications.
 type TopicFanoutPayload struct {
-	EnvID         string          `json:"envId"`
 	TransactionID string          `json:"transactionId"`
 	WorkflowID    string          `json:"workflowId"`
 	TopicKey      string          `json:"topicKey"`
@@ -44,8 +41,8 @@ type TopicFanoutPayload struct {
 	Payload       json.RawMessage `json:"payload"`
 }
 
-func (c *Client) EnqueueJob(ctx context.Context, envID, jobID string, processAt *time.Time) error {
-	payload, _ := json.Marshal(JobPayload{JobID: jobID, EnvID: envID})
+func (c *Client) EnqueueJob(ctx context.Context, jobID string, processAt *time.Time) error {
+	payload, _ := json.Marshal(JobPayload{JobID: jobID})
 	task := asynq.NewTask(TypeProcessJob, payload)
 	var opts []asynq.Option
 	opts = append(opts, asynq.MaxRetry(5))
@@ -56,8 +53,8 @@ func (c *Client) EnqueueJob(ctx context.Context, envID, jobID string, processAt 
 	return err
 }
 
-func (c *Client) EnqueueDigestFlush(ctx context.Context, envID, bucketID, jobID string, at time.Time) error {
-	payload, _ := json.Marshal(DigestPayload{BucketID: bucketID, JobID: jobID, EnvID: envID})
+func (c *Client) EnqueueDigestFlush(ctx context.Context, bucketID, jobID string, at time.Time) error {
+	payload, _ := json.Marshal(DigestPayload{BucketID: bucketID, JobID: jobID})
 	task := asynq.NewTask(TypeDigestFlush, payload)
 	_, err := c.client.EnqueueContext(ctx, task, asynq.ProcessAt(at), asynq.MaxRetry(5))
 	return err
@@ -122,7 +119,7 @@ func ParseTopicFanoutPayload(task *asynq.Task) (TopicFanoutPayload, error) {
 	if err := json.Unmarshal(task.Payload(), &p); err != nil {
 		return p, err
 	}
-	if p.EnvID == "" || p.TransactionID == "" || p.WorkflowID == "" || p.TopicKey == "" {
+	if p.TransactionID == "" || p.WorkflowID == "" || p.TopicKey == "" {
 		return p, fmt.Errorf("topic fanout payload missing required fields")
 	}
 	return p, nil

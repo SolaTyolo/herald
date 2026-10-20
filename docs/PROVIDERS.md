@@ -63,11 +63,13 @@ providers:
 
 ```bash
 export SMTP_HOST=smtp.example.com
-export SMTP_PORT=587
+export SMTP_PORT=587   # 587=STARTTLS；465=隐式 TLS（SMTPS）
 export SMTP_FROM=noreply@example.com
 export SMTP_USERNAME=user
 export SMTP_PASSWORD=pass
 ```
+
+腾讯云等企业邮：`465` 走隐式 TLS；`SMTP_USERNAME` 一般为发信账号（常为完整邮箱），不是显示名。
 
 API 与 Worker 需配置相同值。
 
