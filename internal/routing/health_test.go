@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -45,9 +46,9 @@ providers:
 
 func TestHealthProbeMarksDown(t *testing.T) {
 	t.Parallel()
-	var healthy bool
+	var healthy atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !healthy {
+		if !healthy.Load() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
@@ -91,7 +92,7 @@ providers:
 		t.Fatal("expected unhealthy while probe fails")
 	}
 
-	healthy = true
+	healthy.Store(true)
 	deadline = time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if table.IsServiceHealthy("w") {
