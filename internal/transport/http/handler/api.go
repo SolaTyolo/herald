@@ -8,6 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/SolaTyolo/herald/internal/config"
+	"github.com/SolaTyolo/herald/internal/delivery"
 	"github.com/SolaTyolo/herald/internal/repository"
 	"github.com/SolaTyolo/herald/internal/routing"
 	"github.com/SolaTyolo/herald/internal/service"
@@ -22,6 +23,7 @@ type API struct {
 	notifications *service.NotificationQueryService
 	messages      *service.MessageService
 	templates     *service.TemplateService
+	delivery      *delivery.Service
 	store         repository.Store
 	redis         *redis.Client
 	routes        *routing.Table
@@ -36,6 +38,7 @@ func NewAPI(
 	notifications *service.NotificationQueryService,
 	messages *service.MessageService,
 	templates *service.TemplateService,
+	deliverySvc *delivery.Service,
 	store repository.Store,
 	redisClient *redis.Client,
 	routes *routing.Table,
@@ -45,11 +48,15 @@ func NewAPI(
 		trigger: trigger, subscribers: subscribers, workflows: workflows,
 		topics: topics, notifications: notifications,
 		messages: messages, templates: templates,
+		delivery: deliverySvc,
 		store: store, redis: redisClient, routes: routes,
 	}
 }
 
 func (a *API) Routes(r chi.Router) {
+	// Sync channel send (OTP / monitor / direct) — no workflow persistence.
+	r.Post("/v1/delivery", a.deliverDirect)
+	// Async campaign / in-app — creates notification + jobs.
 	r.Post("/v1/events/trigger", a.triggerEvent)
 
 	r.Route("/v1/subscribers", func(r chi.Router) {

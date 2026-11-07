@@ -163,6 +163,7 @@ func New(ctx context.Context, role Role) (*App, error) {
 			cfg,
 			triggerSvc, subscriberSvc, workflowSvc, topicSvc,
 			notificationSvc, messageSvc, templateSvc,
+			deliverySvc,
 			store, redisClient, routes,
 		)
 	}

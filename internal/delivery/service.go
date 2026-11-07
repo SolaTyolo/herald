@@ -42,6 +42,52 @@ func New(store repository.Store, routes *routing.Table, events bridge.Publisher,
 	}
 }
 
+// DeliverDirect sync-calls a provider (remote → worker /delivery with async=false).
+// Used by POST /v1/delivery for monitor / direct sends — no workflow/notification/job records.
+func (s *Service) DeliverDirect(ctx context.Context, req contract.DeliveryRequest) contract.DeliveryError {
+	name := strings.TrimSpace(req.ProviderName)
+	if name == "" {
+		return contract.Fail("bad_request", "providerName required", false)
+	}
+	route, ok := s.routes.Lookup(name)
+	if !ok {
+		return contract.Fail("unknown_provider", "unsupported providerName: "+name, false)
+	}
+
+	if route.Type == routing.TypeRemote && route.Service != "" && !s.routes.IsServiceHealthy(route.Service) {
+		return contract.Fail("service_unhealthy", fmt.Sprintf("service %s is unhealthy", route.Service), true)
+	}
+
+	if req.ProviderConfig.TimeoutSec <= 0 && route.Timeout > 0 {
+		req.ProviderConfig.TimeoutSec = int(route.Timeout.Seconds())
+	}
+	req.ProviderName = route.Name
+	req.Async = false
+
+	switch route.Type {
+	case routing.TypeBuiltin:
+		if route.Name != routing.BuiltinSMTP {
+			return contract.Fail("unsupported_provider", "builtin provider not sendable via /v1/delivery: "+route.Name, false)
+		}
+		if err := s.smtp.Validate(); err != nil {
+			return contract.Fail("smtp_config", err.Error(), false)
+		}
+		cfg := req.ProviderConfig
+		if cfg.Raw == nil {
+			cfg.Raw = map[string]string{}
+		}
+		for k, v := range s.smtp.Raw() {
+			cfg.Raw[k] = v
+		}
+		return s.smtpSend(ctx, cfg, req.Message)
+	case routing.TypeRemote:
+		// Always sync for the public delivery API, regardless of DELIVERY_RESULT_MODE.
+		return newRemoteClient(false, nil).Send(ctx, route, req)
+	default:
+		return contract.Fail("unknown_provider_type", "unknown provider type: "+route.Type, false)
+	}
+}
+
 func (s *Service) SendChannel(ctx context.Context, channel domain.ChannelType, sub *domain.Subscriber, rendered *domain.MessageTemplate, jobID *string, sendCtx *SendContext) (*domain.Message, error) {
 	if jobID != nil && *jobID != "" {
 		existing, err := s.store.GetMessageByJobID(ctx, *jobID)

@@ -113,11 +113,20 @@ API 与 Worker 需配置相同值。
 
 写 `messages` + bridge；可选 subscriber `webhookUrl`；客户端 `GET /v1/subscribers/{id}/messages`。
 
+## Herald 通用入口
+
+Herald **没有** `/hooks/*`。业务适配（如 GoTrue OTP）在 Delivery Worker / notification 上。
+
+| 入口 | 鉴权 | 说明 |
+|------|------|------|
+| `POST /v1/delivery` | Bearer | **同步直发** → remote `POST /delivery`；无 notification/job |
+| `POST /v1/events/trigger` | Bearer | **异步** campaign / in-app → 队列 → worker → `/delivery` |
+
+All-in-one：`deploy/entrypoint.sh` 拉起 `DELIVERY_WORKER_COUNT`×`herald-worker` + `herald-api`（仅暴露 `:8080`）。用户 Delivery Worker 是**独立进程/镜像**。
+
 ## 用户 Delivery Worker
 
-用户自己实现并部署 HTTP 服务。Herald 只认 `pkg/contract` 里的 JSON 契约，不提供 SDK。
-
-端点：`POST /delivery`（YAML `service.endpoint`）、`GET /health`（健康探测）。
+独立部署（例如 `befship-notification`）。Herald 只认 `pkg/contract` 的 `POST /delivery` / `GET /health`：同步直发由 API 调远端；异步由 `herald-worker` 消费队列后再 `POST /delivery`。业务 hook（如 `POST /hooks/sms-otp`）由 GoTrue 等直接打该 Worker，不经 Herald。
 
 ### POST /delivery
 
